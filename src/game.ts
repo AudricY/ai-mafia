@@ -1,6 +1,18 @@
-import { GameConfig, GameState, PlayerState, GameLogEntry } from './types.js';
+import { GameConfig, GameState, PlayerState, GameLogEntry, Role } from './types.js';
 import { Agent, FactionMemory, createFactionMemory } from './agent.js';
 import { logger } from './logger.js';
+import { formatRoleSetupForPrompt, formatRoleSetupForPublicLog } from './roles.js';
+
+function mulberry32(seed: number): () => number {
+  let t = seed >>> 0;
+  return () => {
+    t += 0x6d2b79f5;
+    let x = t;
+    x = Math.imul(x ^ (x >>> 15), x | 1);
+    x ^= x + Math.imul(x ^ (x >>> 7), x | 61);
+    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
 export class Game {
   private config: GameConfig;
@@ -8,6 +20,8 @@ export class Game {
   private agents: Record<string, Agent>;
   private mafiaMemory?: FactionMemory;
   private lastNightDeaths: string[] = [];
+  private roleCounts: Partial<Record<Role, number>> = {};
+  private roleSetupPublicText = '';
 
   constructor(config: GameConfig) {
     this.config = config;
@@ -95,30 +109,33 @@ export class Game {
 
   private assignRoles() {
     const playerNames = Object.keys(this.state.players);
-    const shuffled = [...playerNames].sort(() => Math.random() - 0.5);
-    
-    // Simple assignment logic based on config or random
-    // If config.roles exists, use it. Otherwise random.
+
+    const seed =
+      this.config.role_seed ??
+      (process.env.AI_MAFIA_DRY_RUN_SEED ? Number(process.env.AI_MAFIA_DRY_RUN_SEED) : undefined) ??
+      Date.now();
+    const rng = mulberry32(Number.isFinite(seed) ? seed : Date.now());
+
+    const shuffledPlayers = [...playerNames].sort(() => rng() - 0.5);
+
+    // If config.roles exists, use it (forced assignment).
+    // Otherwise, select a role setup and assign to all players.
     if (this.config.roles) {
-      for (const [name, role] of Object.entries(this.config.roles)) {
-        if (this.state.players[name]) {
-          this.state.players[name].role = role;
-          this.agents[name]?.setRole(role);
-          this.agents[name]?.setFactionMemory(['mafia', 'godfather'].includes(role) ? this.mafiaMemory : undefined);
-        }
+      for (const name of playerNames) {
+        const forced = this.config.roles[name];
+        if (forced) this.state.players[name]!.role = forced;
       }
     } else {
-      // Default: 1 Mafia for every 4 players?
-      // For now, let's keep it simple: 1 mafia, 1 cop, rest villagers for < 6 players
-      // This logic can be expanded
-      const mafia = shuffled.pop();
-      const cop = shuffled.pop();
-       if (mafia) this.state.players[mafia].role = 'mafia';
-      if (cop) this.state.players[cop].role = 'cop';
-      // Role is managed by state injection logic in generating prompts.
+      const selectedRoleList = this.buildRoleListForGame(shuffledPlayers.length, rng);
+      const shuffledRoles = [...selectedRoleList].sort(() => rng() - 0.5);
+      for (let i = 0; i < shuffledPlayers.length; i++) {
+        const name = shuffledPlayers[i]!;
+        const role = shuffledRoles[i]!;
+        this.state.players[name]!.role = role;
+      }
     }
 
-    // Log roles (system only)
+    // Log roles (system only) + initialize agent-private knowledge.
     Object.values(this.state.players).forEach(p => {
       this.agents[p.config.name]?.setRole(p.role);
       this.agents[p.config.name]?.setFactionMemory(['mafia', 'godfather'].includes(p.role) ? this.mafiaMemory : undefined);
@@ -128,9 +145,19 @@ export class Game {
         content: `Assigned role ${p.role} to ${p.config.name}`,
         metadata: { role: p.role, player: p.config.name, visibility: 'private' },
       });
-      // Private role knowledge for the agent itself.
       this.agents[p.config.name]?.observePrivateEvent(`Your role is ${p.role}.`);
     });
+
+    this.roleCounts = this.computeRoleCountsFromState();
+    this.roleSetupPublicText = formatRoleSetupForPublicLog(this.roleCounts);
+
+    // Inject dynamic rules so everyone knows the role setup and mechanics for this game.
+    const baseRules = this.config.system_prompt?.trim() ?? '';
+    const roleRules = formatRoleSetupForPrompt(this.roleCounts);
+    const fullRules = [baseRules, roleRules].filter(Boolean).join('\n\n');
+    for (const name of playerNames) {
+      this.agents[name]?.setGameRules(fullRules);
+    }
 
     // Let the logger auto-tag future entries with actor roles.
     logger.setPlayerRoles(
@@ -138,7 +165,93 @@ export class Game {
     );
   }
 
+  private computeRoleCountsFromState(): Partial<Record<Role, number>> {
+    const counts: Partial<Record<Role, number>> = {};
+    for (const ps of Object.values(this.state.players)) {
+      const r = ps.role;
+      counts[r] = (counts[r] ?? 0) + 1;
+    }
+    return counts;
+  }
+
+  private buildRoleListForGame(playerCount: number, rng: () => number): Role[] {
+    const allowed = this.config.role_pool?.length ? new Set<Role>(this.config.role_pool) : null;
+    const isAllowed = (r: Role) => (allowed ? allowed.has(r) : true);
+
+    const counts: Partial<Record<Role, number>> = {};
+
+    const add = (r: Role, n: number) => {
+      if (n <= 0) return;
+      if (!isAllowed(r)) {
+        throw new Error(`Role "${r}" is not allowed by role_pool.`);
+      }
+      counts[r] = (counts[r] ?? 0) + n;
+    };
+
+    // Explicit counts override defaults.
+    if (this.config.role_counts) {
+      for (const [role, raw] of Object.entries(this.config.role_counts) as Array<[Role, number]>) {
+        add(role, raw);
+      }
+    } else if (this.config.role_pool?.length) {
+      // Heuristic defaults when using role_pool but no explicit counts.
+      const hasMafiaRole = isAllowed('mafia') || isAllowed('godfather');
+      if (!hasMafiaRole) {
+        throw new Error('role_pool must include at least one mafia role (mafia or godfather).');
+      }
+
+      // Mafia size heuristic: ~25% of players, at least 1.
+      let mafiaTotal = Math.max(1, Math.floor(playerCount / 4));
+      if (isAllowed('godfather')) {
+        add('godfather', 1);
+        mafiaTotal = Math.max(0, mafiaTotal - 1);
+      }
+      if (mafiaTotal > 0 && isAllowed('mafia')) add('mafia', mafiaTotal);
+
+      // Town power roles (only if allowed).
+      if (playerCount >= 5 && isAllowed('cop')) add('cop', 1);
+      if (playerCount >= 5 && isAllowed('doctor')) add('doctor', 1);
+      if (playerCount >= 6 && isAllowed('roleblocker')) add('roleblocker', 1);
+      if (playerCount >= 7 && isAllowed('vigilante')) add('vigilante', 1);
+    } else {
+      // Back-compat fallback: simple default if no pool/counts are provided.
+      add('mafia', Math.max(1, Math.floor(playerCount / 4)));
+      if (playerCount >= 4) add('cop', 1);
+    }
+
+    const total = Object.values(counts).reduce((a, b) => a + (b ?? 0), 0);
+    if (total > playerCount) {
+      throw new Error(
+        `Selected role counts (${total}) exceed player count (${playerCount}). Adjust role_counts / role_pool defaults.`
+      );
+    }
+
+    // Fill remaining seats with villagers (must be allowed if role_pool is used).
+    const remaining = playerCount - total;
+    if (remaining > 0) {
+      if (!isAllowed('villager')) {
+        throw new Error(
+          `Need ${remaining} filler roles but "villager" is not allowed by role_pool. Add villager or provide exact role_counts.`
+        );
+      }
+      add('villager', remaining);
+    }
+
+    // Materialize list.
+    const roleList: Role[] = [];
+    for (const [role, n] of Object.entries(counts) as Array<[Role, number]>) {
+      for (let i = 0; i < n; i++) roleList.push(role);
+    }
+
+    // Small shuffle to avoid predictable ordering from counts materialization.
+    return roleList.sort(() => rng() - 0.5);
+  }
+
   async start() {
+    this.recordPublic({
+      type: 'SYSTEM',
+      content: `Available roles this game: ${this.roleSetupPublicText}`,
+    });
     this.recordPublic({ type: 'SYSTEM', content: 'Game Starting...' });
     
     while (!this.state.winners) {

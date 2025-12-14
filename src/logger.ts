@@ -11,7 +11,6 @@ const ROLE_COLORS: Record<string, (text: string) => string> = {
   doctor: chalk.cyan,
   vigilante: chalk.magenta,
   roleblocker: chalk.yellow,
-  god: chalk.white.bold,
 };
 
 const TYPE_COLORS: Record<LogType, (text: string) => string> = {
@@ -115,7 +114,7 @@ export class GameLogger {
 
     // Highlight roles in content
     let content = fullEntry.content;
-    const rolePattern = /\b(villager|mafia|cop|doctor|god|vigilante|roleblocker|godfather)s?\b/gi;
+    const rolePattern = /\b(villager|mafia|cop|doctor|vigilante|roleblocker|godfather)s?\b/gi;
     content = content.replace(rolePattern, (match) => {
       const lower = match.toLowerCase().replace(/s$/, '') as string; // simple singularization
       const colorFn = ROLE_COLORS[lower];

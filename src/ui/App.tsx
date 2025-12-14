@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Text, useApp, useInput, useStdout } from 'ink';
 import { logger } from '../logger.js';
 import type { GameLogEntry, Role } from '../types.js';
@@ -52,8 +52,6 @@ function roleColor(role: Role | undefined): string | undefined {
       return 'magenta';
     case 'roleblocker':
       return 'yellow';
-    case 'god':
-      return 'white';
     default:
       return undefined;
   }
@@ -69,6 +67,29 @@ function getMetadataRole(entry: GameLogEntry): Role | undefined {
   return typeof v === 'string' ? (v as Role) : undefined;
 }
 
+function entryToPlainText(entry: GameLogEntry): string {
+  const role = getMetadataRole(entry);
+  const time = formatTime(entry.timestamp);
+  const type = entry.type;
+  const player = entry.player;
+
+  const prefix = player ? `[${time}] [${type}] <${player}${role ? `:${role}` : ''}>: ` : `[${time}] [${type}]: `;
+  return `${prefix}${entry.content}`;
+}
+
+function estimateWrappedLines(text: string, width: number): number {
+  if (width <= 0) return 0;
+  // Ink can wrap on word boundaries; we approximate by character width.
+  // This is only used to decide how many tail entries to render.
+  const parts = text.split('\n');
+  let lines = 0;
+  for (const p of parts) {
+    const len = p.length;
+    lines += Math.max(1, Math.ceil(len / width));
+  }
+  return lines;
+}
+
 export function App(props: { players: string[] }) {
   const { exit } = useApp();
   const { stdout } = useStdout();
@@ -81,6 +102,8 @@ export function App(props: { players: string[] }) {
   const [pov, setPov] = useState<PovMode>('ALL');
   const [entries, setEntries] = useState<GameLogEntry[]>(() => logger.getLogs());
   const [playerRoles, setPlayerRoles] = useState<Record<string, Role>>({});
+  const [scrollFromBottomRows, setScrollFromBottomRows] = useState(0);
+  const prevTotalRowsRef = useRef<number>(0);
 
   const povOrder: PovMode[] = useMemo(() => {
     const players = props.players.map(p => ({ player: p } as const));
@@ -132,6 +155,34 @@ export function App(props: { players: string[] }) {
   useInput((input, key) => {
     if (input === 'q' || key.escape) {
       exit();
+      return;
+    }
+
+    // Scroll controls (works in the pinned-header view).
+    if (key.upArrow) {
+      setScrollFromBottomRows(v => v + 1);
+      return;
+    }
+    if (key.downArrow) {
+      setScrollFromBottomRows(v => Math.max(0, v - 1));
+      return;
+    }
+    if (key.pageUp) {
+      setScrollFromBottomRows(v => v + Math.max(1, Math.floor(logContentRows * 0.9)));
+      return;
+    }
+    if (key.pageDown) {
+      setScrollFromBottomRows(v => Math.max(0, v - Math.max(1, Math.floor(logContentRows * 0.9))));
+      return;
+    }
+    if (input === 'G') {
+      // Jump to oldest (top).
+      setScrollFromBottomRows(Number.POSITIVE_INFINITY);
+      return;
+    }
+    if (input === 'g') {
+      // Jump to newest (bottom / follow).
+      setScrollFromBottomRows(0);
       return;
     }
 
@@ -201,14 +252,66 @@ export function App(props: { players: string[] }) {
     return r ? `${pov.player} (${r})` : pov.player;
   }, [pov, playerRoles]);
 
-  // Try to fit to terminal height.
-  const headerLines = 3;
-  const maxLines = Math.max(5, dimensions.rows - headerLines);
-  const lines = visibleEntries.slice(-maxLines);
+  // Keep the header pinned by ensuring the log area never exceeds the terminal height.
+  // With wrapping enabled, a single entry can span multiple terminal rows, so we estimate
+  // row usage and only render the tail that fits.
+  const headerRows = 2;
+  const logBoxHeight = Math.max(3, dimensions.rows - headerRows);
+  const logContentRows = Math.max(1, logBoxHeight - 2); // border top/bottom
+  const logContentWidth = Math.max(10, dimensions.columns - 2 /* border */ - 2 /* paddingX */);
+
+  const metrics = useMemo(() => {
+    return visibleEntries.map(e => ({
+      entry: e,
+      rows: estimateWrappedLines(entryToPlainText(e), logContentWidth),
+    }));
+  }, [visibleEntries, logContentWidth]);
+
+  const totalRows = useMemo(() => metrics.reduce((acc, m) => acc + m.rows, 0), [metrics]);
+  const maxScrollFromBottom = useMemo(() => Math.max(0, totalRows - logContentRows), [logContentRows, totalRows]);
+
+  useEffect(() => {
+    // Keep the viewport stable if new rows appear while the user is scrolled up.
+    const prev = prevTotalRowsRef.current;
+    if (prev !== 0 && totalRows > prev) {
+      const delta = totalRows - prev;
+      setScrollFromBottomRows(v => (v > 0 ? v + delta : 0));
+    }
+    prevTotalRowsRef.current = totalRows;
+  }, [totalRows]);
+
+  useEffect(() => {
+    // Clamp on resize / filter changes.
+    setScrollFromBottomRows(v => Math.min(maxScrollFromBottom, Number.isFinite(v) ? v : maxScrollFromBottom));
+  }, [maxScrollFromBottom]);
+
+  const clampedScrollFromBottom = Math.min(scrollFromBottomRows, maxScrollFromBottom);
+
+  const lines = useMemo(() => {
+    if (metrics.length === 0) return [];
+
+    // We treat the log as a long list of "rows" (wrapped lines).
+    const endRowExclusive = Math.max(0, totalRows - clampedScrollFromBottom);
+    const startRowInclusive = Math.max(0, endRowExclusive - logContentRows);
+
+    const picked: GameLogEntry[] = [];
+    let cursor = 0;
+    for (const m of metrics) {
+      const nextCursor = cursor + m.rows;
+      const overlaps = nextCursor > startRowInclusive && cursor < endRowExclusive;
+      if (overlaps) picked.push(m.entry);
+      cursor = nextCursor;
+      if (cursor >= endRowExclusive) break;
+    }
+
+    // Always show at least one entry if any exist (helps when a single entry is huge).
+    if (picked.length === 0) return [metrics[metrics.length - 1]!.entry];
+    return picked;
+  }, [clampedScrollFromBottom, logContentRows, metrics, totalRows]);
 
   return (
-    <Box flexDirection="column" width={dimensions.columns}>
-      <Box>
+    <Box flexDirection="column" width={dimensions.columns} height={dimensions.rows} overflow="hidden">
+      <Box flexShrink={0}>
         <Text bold>AI Mafia</Text>
         <Text>  </Text>
         <Text color="gray">POV:</Text>
@@ -222,20 +325,33 @@ export function App(props: { players: string[] }) {
         <Text> </Text>
         <Text>t toggle thoughts</Text>
         <Text color="gray"> | </Text>
+        <Text>↑/↓ scroll</Text>
+        <Text color="gray"> | </Text>
+        <Text>pgUp/pgDn</Text>
+        <Text color="gray"> | </Text>
+        <Text>G top / g bottom</Text>
+        <Text color="gray"> | </Text>
         <Text>p/] next POV</Text>
         <Text color="gray"> | </Text>
         <Text>[ prev POV</Text>
         <Text color="gray"> | </Text>
         <Text>q/esc quit</Text>
       </Box>
-      <Box borderStyle="round" flexDirection="column" paddingX={1}>
+      <Box
+        borderStyle="round"
+        flexDirection="column"
+        paddingX={1}
+        height={logBoxHeight}
+        overflow="hidden"
+        flexGrow={1}
+      >
         {lines.map(e => {
           const role = getMetadataRole(e);
           const time = formatTime(e.timestamp);
           const c = typeColor(e.type);
           const rc = roleColor(role);
           return (
-            <Text key={e.id} wrap="truncate-end">
+            <Text key={e.id} wrap="wrap">
               <Text color="gray">[{time}]</Text> <Text color={c}>{`[${e.type}]`}</Text>
               {e.player ? (
                 <>

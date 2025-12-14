@@ -2,7 +2,15 @@ import { z } from 'zod';
 
 // --- Configuration Types ---
 
-export const RoleSchema = z.enum(['villager', 'mafia', 'cop', 'doctor', 'god', 'vigilante', 'roleblocker', 'godfather']);
+export const RoleSchema = z.enum([
+  'villager',
+  'mafia',
+  'cop',
+  'doctor',
+  'vigilante',
+  'roleblocker',
+  'godfather',
+]);
 export type Role = z.infer<typeof RoleSchema>;
 
 export const PlayerConfigSchema = z.object({
@@ -19,6 +27,11 @@ export const GameConfigSchema = z.object({
   system_prompt: z.string().default('You are playing a game of Mafia.'),
   players: z.array(PlayerConfigSchema),
   roles: z.record(z.string(), RoleSchema).optional(), // Map player name to role (optional, for forced assignment)
+  // If roles are not explicitly assigned, the game can select roles from a pool.
+  // The selected role setup (including counts) is intended to be public knowledge, while assignments remain hidden.
+  role_pool: z.array(RoleSchema).optional(),
+  role_counts: z.record(RoleSchema, z.number().int().nonnegative()).optional(),
+  role_seed: z.number().int().optional(),
   memory_window_size: z.number().int().positive().default(20),
   memory_summary_max_chars: z.number().int().positive().default(1200),
   enable_faction_memory: z.boolean().default(true),

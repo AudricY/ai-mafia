@@ -22,7 +22,7 @@ players:
     model: "deepseek/deepseek-v3.2"
     
   - name: "Eve"
-    model: "deepseek/deepseek-v3.2"
+    model: "deepseek/deepseek-v3.2-thinking"
 
   - name: "Frank"
     model: "deepseek/deepseek-v3.2"
