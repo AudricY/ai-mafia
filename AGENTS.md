@@ -23,6 +23,12 @@
   - `pnpm install`
   - `pnpm start`
 
+## Dry-run mode (development)
+Use dry-run to exercise the full game loop **without running any agents** (no API keys required).
+
+- `pnpm start:dry-run`
+
+
 ## Repo Documentation Rule
 - **Do not create `README.md`**: all repo context, setup, and conventions must live in `AGENTS.md`.
 

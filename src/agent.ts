@@ -2,6 +2,44 @@ import { generateText, CoreMessage, gateway } from 'ai';
 import { PlayerConfig, Role, LogType, GameLogEntry } from './types.js';
 import { logger } from './logger.js';
 
+function isDryRun(): boolean {
+  const v = (process.env.AI_MAFIA_DRY_RUN ?? process.env.DRY_RUN ?? '').toLowerCase().trim();
+  return v === '1' || v === 'true' || v === 'yes' || v === 'on';
+}
+
+function dryRunSeed(): number {
+  const raw = process.env.AI_MAFIA_DRY_RUN_SEED;
+  if (!raw) return 1;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : 1;
+}
+
+function fnv1a32(input: string): number {
+  // FNV-1a 32-bit hash, deterministic across runs.
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return hash >>> 0;
+}
+
+function pickDeterministicOption(options: string[], key: string): string {
+  if (options.length === 0) return '';
+  const h = fnv1a32(`${dryRunSeed()}|${key}|${options.join('|')}`);
+  return options[h % options.length]!;
+}
+
+function parseAlivePlayersFromContext(systemContext: string): string[] {
+  // Game prints: "Alive players: A, B, C."
+  const m = systemContext.match(/Alive players:\s*([^\n.]+)\./i);
+  if (!m?.[1]) return [];
+  return m[1]
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+}
+
 export interface AgentMemoryConfig {
   publicWindowSize: number;
   summaryMaxChars: number;
@@ -280,6 +318,25 @@ ${systemConstraints ? `\n${systemConstraints.trim()}\n` : ''}
     newEventsText: string,
     opts?: { faction?: 'mafia' }
   ): Promise<string> {
+    if (isDryRun()) {
+      const scope = opts?.faction ? `Faction scope: ${opts.faction}` : 'Scope: private player memory';
+      const prev = existingSummary?.trim();
+      const nextLines = newEventsText
+        .split('\n')
+        .map(l => l.trim())
+        .filter(Boolean)
+        .slice(-25)
+        .join('\n');
+      const combined = [
+        prev ? prev : '',
+        prev ? '' : `(${scope})`,
+        nextLines ? `Recent events:\n${nextLines}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n');
+      return combined.trim();
+    }
+
     const model = this.getModel();
     const scope = opts?.faction ? `Faction scope: ${opts.faction}` : 'Scope: private player memory';
 
@@ -343,6 +400,41 @@ ${newEventsText.trim()}
     try {
       await this.ensureMemoryBudget();
 
+      if (isDryRun()) {
+        const alive = parseAlivePlayersFromContext(systemContext);
+        const otherAlive = alive.filter(n => n !== this.config.name);
+        const target = otherAlive.length
+          ? pickDeterministicOption(otherAlive, `${this.config.name}|chat|${systemContext}`)
+          : '';
+
+        // If this agent has a cop result in private facts, optionally surface it.
+        const lastInvestigation = [...this.privateFacts]
+          .reverse()
+          .find(f => f.toLowerCase().includes('investigation result'));
+        const copAccuse =
+          this.currentRole === 'cop' && lastInvestigation && lastInvestigation.includes(' is MAFIA')
+            ? lastInvestigation.match(/:\s*([^ ]+)\s+is\s+MAFIA/i)?.[1]
+            : null;
+
+        const pub =
+          copAccuse && alive.includes(copAccuse)
+            ? `I have strong info that ${copAccuse} is Mafia. We should focus there.`
+            : target
+              ? `I’m not fully sure yet, but ${target} feels suspicious based on the discussion so far.`
+              : `No strong reads yet—let’s compare notes and look for inconsistencies.`;
+
+        const thoughts = `dry-run: role=${this.currentRole}; suspect=${copAccuse ?? target ?? '(none)'}`;
+        if (this.logThoughts) {
+          logger.log({
+            type: 'THOUGHT',
+            player: this.config.name,
+            content: `Thought update: ${this.truncate(thoughts, 300)}`,
+          });
+        }
+        this.observePrivateEvent(`Thought update: ${thoughts}`);
+        return pub;
+      }
+
       const model = this.getModel();
 
       const systemPrompt = this.buildSystemPrompt(`
@@ -402,6 +494,21 @@ Output format:
   ): Promise<string> {
     try {
       await this.ensureMemoryBudget();
+
+      if (isDryRun()) {
+        // Deterministic choice so development runs are repeatable.
+        const choice = pickDeterministicOption(options, `${this.config.name}|decision|${context}`);
+        const rationale = `dry-run deterministic pick: ${choice}`;
+        if (this.logThoughts) {
+          logger.log({
+            type: 'THOUGHT',
+            player: this.config.name,
+            content: `Decision rationale (${choice}): ${this.truncate(rationale, 300)}`,
+          });
+        }
+        this.observePrivateEvent(`Decision rationale (${choice}): ${rationale}`);
+        return choice || options[0]!;
+      }
 
       const model = this.getModel();
 
