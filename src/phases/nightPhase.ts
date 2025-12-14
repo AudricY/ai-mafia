@@ -124,7 +124,7 @@ export class NightPhase {
       if (k.source === 'mafia') {
         engine.recordPublic({
           type: 'SYSTEM',
-          content: `Mafia tried to kill ${k.target}, but they were saved by the Doctor!`,
+          content: `Mafia tried to kill ${k.target}, but they were saved!`,
         });
       } else {
         engine.recordPublic({

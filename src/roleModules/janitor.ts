@@ -1,6 +1,7 @@
 import type { GameEngine } from '../engine/gameEngine.js';
 import type { NightActionIntent } from '../actions/types.js';
 import { logger } from '../logger.js';
+import { runMafiaDiscussion } from './mafia.ts';
 
 export async function collectJanitorActions(
   engine: GameEngine
@@ -22,37 +23,11 @@ export async function collectJanitorActions(
       p.role === 'janitor'
   );
 
-  if (mafiaTeam.length > 1) {
-    logger.log({
-      type: 'SYSTEM',
-      content: `Mafia team (including janitor) is discussing cleaning strategy...`,
-      metadata: { faction: 'mafia', visibility: 'faction' },
-    });
-    const discussionRounds = 1;
-    for (let r = 0; r < discussionRounds; r++) {
-      for (const member of mafiaTeam) {
-        const others = mafiaTeam.filter(m => m !== member).map(m => m.config.name).join(', ');
-        const context = `Night ${engine.state.round} Mafia Discussion (Round ${r + 1}/${discussionRounds}).
-Teammates: ${others}.
-Goal: Discuss who to clean (hide role reveal) if we kill them tonight. Coordinate with your team.
-Alive players: ${aliveNames.join(', ')}.`;
-
-        const message = await engine.agentIO.respond(member.config.name, context, []);
-
-        const formattedMsg = `${member.config.name}: ${message}`;
-        mafiaTeam.forEach(m => {
-          engine.agents[m.config.name]?.observeFactionEvent(formattedMsg);
-        });
-
-        logger.log({
-          type: 'FACTION_CHAT',
-          player: member.config.name,
-          content: message,
-          metadata: { role: member.role, faction: 'mafia', visibility: 'faction' },
-        });
-      }
-    }
-  }
+  await runMafiaDiscussion(engine, mafiaTeam, aliveNames, {
+    systemLogContent: 'Mafia team (including janitor) is discussing cleaning strategy...',
+    goal: 'Discuss who to clean (hide role reveal) if we kill them tonight. Coordinate with your team.',
+    rounds: 1,
+  });
 
   for (const janitor of janitors) {
     // Janitor can only clean mafia kills, so we need to know who mafia plans to kill

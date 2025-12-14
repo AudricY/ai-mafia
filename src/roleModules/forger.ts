@@ -2,6 +2,7 @@ import type { GameEngine } from '../engine/gameEngine.js';
 import type { NightActionIntent } from '../actions/types.js';
 import { logger } from '../logger.js';
 import type { Role } from '../types.js';
+import { runMafiaDiscussion } from './mafia.ts';
 
 export async function collectForgerActions(
   engine: GameEngine
@@ -24,37 +25,11 @@ export async function collectForgerActions(
       p.role === 'forger'
   );
 
-  if (mafiaTeam.length > 1) {
-    logger.log({
-      type: 'SYSTEM',
-      content: `Mafia team (including forger) is discussing forging strategy...`,
-      metadata: { faction: 'mafia', visibility: 'faction' },
-    });
-    const discussionRounds = 1;
-    for (let r = 0; r < discussionRounds; r++) {
-      for (const member of mafiaTeam) {
-        const others = mafiaTeam.filter(m => m !== member).map(m => m.config.name).join(', ');
-        const context = `Night ${engine.state.round} Mafia Discussion (Round ${r + 1}/${discussionRounds}).
-Teammates: ${others}.
-Goal: Discuss who to forge (fake role reveal) if we kill them tonight. Coordinate with your team.
-Alive players: ${aliveNames.join(', ')}.`;
-
-        const message = await engine.agentIO.respond(member.config.name, context, []);
-
-        const formattedMsg = `${member.config.name}: ${message}`;
-        mafiaTeam.forEach(m => {
-          engine.agents[m.config.name]?.observeFactionEvent(formattedMsg);
-        });
-
-        logger.log({
-          type: 'FACTION_CHAT',
-          player: member.config.name,
-          content: message,
-          metadata: { role: member.role, faction: 'mafia', visibility: 'faction' },
-        });
-      }
-    }
-  }
+  await runMafiaDiscussion(engine, mafiaTeam, aliveNames, {
+    systemLogContent: 'Mafia team (including forger) is discussing forging strategy...',
+    goal: 'Discuss who to forge (fake role reveal) if we kill them tonight. Coordinate with your team.',
+    rounds: 1,
+  });
 
   // Get list of valid roles for forging (all roles except mafia roles)
   const validRoles: Role[] = [

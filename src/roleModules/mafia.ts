@@ -1,6 +1,66 @@
 import type { GameEngine } from '../engine/gameEngine.js';
 import type { NightActionIntent } from '../actions/types.js';
+import type { PlayerState } from '../types.js';
 import { logger } from '../logger.js';
+
+export async function runMafiaDiscussion(
+  engine: GameEngine,
+  mafiaTeam: PlayerState[],
+  aliveNames: string[],
+  opts: {
+    systemLogContent: string;
+    goal: string;
+    rounds?: number;
+  }
+): Promise<void> {
+  if (mafiaTeam.length <= 1) return;
+
+  logger.log({
+    type: 'SYSTEM',
+    content: opts.systemLogContent,
+    metadata: { faction: 'mafia', visibility: 'faction' },
+  });
+
+  const discussionRounds = Math.max(1, opts.rounds ?? 1);
+  for (let r = 0; r < discussionRounds; r++) {
+    for (const member of mafiaTeam) {
+      const others = mafiaTeam
+        .filter(m => m !== member)
+        .map(m => m.config.name)
+        .join(', ');
+
+      const context = `Night ${engine.state.round} Mafia Discussion (Round ${r + 1}/${discussionRounds}).
+Teammates: ${others}.
+Goal: ${opts.goal}
+Important:
+- Avoid empty confirmations ("confirmed", "locked in") unless you add new information.
+- If you have nothing NEW to add, reply with the single word "SKIP".
+Alive players: ${aliveNames.join(', ')}.`;
+
+      const message = await engine.agentIO.respond(member.config.name, context, []);
+      const isSkip = message.trim().toUpperCase() === 'SKIP';
+
+      if (isSkip) {
+        engine.agents[member.config.name]?.observePrivateEvent(
+          'You chose to SKIP this mafia discussion turn.'
+        );
+        continue;
+      }
+
+      const formattedMsg = `${member.config.name}: ${message}`;
+      mafiaTeam.forEach(m => {
+        engine.agents[m.config.name]?.observeFactionEvent(formattedMsg);
+      });
+
+      logger.log({
+        type: 'FACTION_CHAT',
+        player: member.config.name,
+        content: message,
+        metadata: { role: member.role, faction: 'mafia', visibility: 'faction' },
+      });
+    }
+  }
+}
 
 export async function collectMafiaActions(
   engine: GameEngine
@@ -20,40 +80,13 @@ export async function collectMafiaActions(
   if (mafiaTeam.length === 0) return [];
 
   // --- Mafia Discussion ---
-  if (mafiaTeam.length > 1) {
-    logger.log({
-      type: 'SYSTEM',
-      content: `Mafia team is discussing targeting strategy...`,
-      metadata: { faction: 'mafia', visibility: 'faction' },
-    });
-    const discussionRounds = 2;
-    for (let r = 0; r < discussionRounds; r++) {
-      for (const member of mafiaTeam) {
-        const others = mafiaTeam
-          .filter(m => m !== member)
-          .map(m => m.config.name)
-          .join(', ');
-        const context = `Night ${engine.state.round} Mafia Discussion (Round ${r + 1}/${discussionRounds}).
-Teammates: ${others}.
-Goal: Discuss who to kill tonight. Coordinate with your team.
-Alive players: ${aliveNames.join(', ')}.`;
-
-        const message = await engine.agentIO.respond(member.config.name, context, []);
-
-        const formattedMsg = `${member.config.name}: ${message}`;
-        mafiaTeam.forEach(m => {
-          engine.agents[m.config.name]?.observeFactionEvent(formattedMsg);
-        });
-
-        logger.log({
-          type: 'FACTION_CHAT',
-          player: member.config.name,
-          content: message,
-          metadata: { role: member.role, faction: 'mafia', visibility: 'faction' },
-        });
-      }
-    }
-  }
+  // Two-person teams tend to waste turns “confirming” the same plan.
+  // Keep 1 round for 2 mafia; allow a second round only for larger teams.
+  await runMafiaDiscussion(engine, mafiaTeam, aliveNames, {
+    systemLogContent: 'Mafia team is discussing targeting strategy...',
+    goal: 'Discuss who to kill tonight. Coordinate with your team.',
+    rounds: mafiaTeam.length >= 3 ? 2 : 1,
+  });
 
   // Find shooter (Godfather priority, then mafia, then other mafia roles)
   // Backup shooter logic: if default shooter is blocked, another mafia member can perform the kill
