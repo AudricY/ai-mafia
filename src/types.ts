@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 // --- Configuration Types ---
 
-export const RoleSchema = z.enum(['villager', 'mafia', 'cop', 'doctor', 'god']);
+export const RoleSchema = z.enum(['villager', 'mafia', 'cop', 'doctor', 'god', 'vigilante', 'roleblocker', 'godfather']);
 export type Role = z.infer<typeof RoleSchema>;
 
 export const PlayerConfigSchema = z.object({

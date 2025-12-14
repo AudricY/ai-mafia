@@ -25,9 +25,17 @@ players:
   - name: "Eve"
     model: "deepseek/deepseek-v3.2"
 
+  - name: "Frank"
+    model: "deepseek/deepseek-v3.2"
+
+  - name: "Grace"
+    model: "deepseek/deepseek-v3.2"
+
 roles:
-  Alice: mafia
-  Bob: cop
-  Charlie: doctor
-  Dave: villager
-  Eve: villager
+  Alice: godfather
+  Bob: mafia
+  Charlie: cop
+  Dave: doctor
+  Eve: vigilante
+  Frank: roleblocker
+  Grace: villager
