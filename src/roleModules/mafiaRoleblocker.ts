@@ -9,6 +9,7 @@ export async function collectMafiaRoleblockerActions(
   const aliveNames = alivePlayers.map(p => p.config.name);
 
   const mafiaRoleblockers = alivePlayers.filter(p => p.role === 'mafia_roleblocker');
+  if (mafiaRoleblockers.length === 0) return [];
   const actions: Array<Extract<NightActionIntent, { kind: 'block' }>> = [];
 
   // Mafia roleblockers coordinate with the mafia team

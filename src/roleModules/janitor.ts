@@ -9,6 +9,7 @@ export async function collectJanitorActions(
   const aliveNames = alivePlayers.map(p => p.config.name);
 
   const janitors = alivePlayers.filter(p => p.role === 'janitor');
+  if (janitors.length === 0) return [];
   const actions: Array<Extract<NightActionIntent, { kind: 'clean' }>> = [];
 
   // Janitors coordinate with the mafia team

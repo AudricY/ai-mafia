@@ -8,6 +8,7 @@ export class DayDiscussionPhase {
     const alivePlayers = engine.getAlivePlayers();
     const aliveCount = alivePlayers.length;
     const aliveNames = alivePlayers.map(p => p.config.name);
+    let lastSpeakerName = 'none';
 
     const voteTally = engine.state.round > 1 ? engine.getVoteTallyForDay(engine.state.round - 1) : null;
     const recapLines = [
@@ -35,10 +36,21 @@ export class DayDiscussionPhase {
     for (let i = 0; i < alivePlayers.length; i++) {
       const player = alivePlayers[i]!;
       const name = player.config.name;
+      const nextSpeaker = alivePlayers[(i + 1) % aliveCount]?.config.name ?? 'none';
       const context = `
 Current Phase: Day ${engine.state.round}, Question Round.
 This is your public speaking turn. Speak as ${name}.
 Alive players: ${aliveNames.join(', ')}.
+Speaking order (fixed, round-robin): ${aliveNames.join(' -> ')}.
+Your position in the order: ${i + 1}/${aliveCount}. Next speaker: ${nextSpeaker}.
+Previous speaker: ${lastSpeakerName}.
+
+Turn protocol (important):
+- Discussion is strictly sequential / turn-based (one speaker at a time).
+- You are speaking immediately after the previous speaker above.
+- Avoid rehashing the previous speaker’s main point. If you reference it, do so briefly and add something new (a different angle or a targeted question).
+- If you truly cannot add value, reply with the single word "SKIP".
+
 Instruction:
 - Ask ONE targeted question to a specific living player.
 - Your question should reduce uncertainty (alignment, motives, votes, night actions).
@@ -57,6 +69,7 @@ Instruction:
           player: name,
           content: message,
         });
+        lastSpeakerName = name;
       }
     }
 
@@ -66,7 +79,9 @@ Instruction:
     let turnIndex = 0;
 
     while (openMessagesSent < openDiscussionMaxMessages && consecutiveSkips < aliveCount) {
-      const player = alivePlayers[turnIndex % aliveCount]!;
+      const idx = turnIndex % aliveCount;
+      const player = alivePlayers[idx]!;
+      const nextSpeaker = alivePlayers[(idx + 1) % aliveCount]?.config.name ?? 'none';
       turnIndex++;
 
       const name = player.config.name;
@@ -74,7 +89,16 @@ Instruction:
 Current Phase: Day ${engine.state.round}, Open Discussion.
 This is your public speaking turn. Speak as ${name}.
 Alive players: ${aliveNames.join(', ')}.
+Speaking order (fixed, round-robin): ${aliveNames.join(' -> ')}.
+Your position in the order: ${idx + 1}/${aliveCount}. Next speaker: ${nextSpeaker}.
 Status: ${openMessagesSent}/${openDiscussionMaxMessages} open-discussion messages used.
+Previous speaker: ${lastSpeakerName}.
+
+Turn protocol (important):
+- Discussion is strictly sequential / turn-based (one speaker at a time).
+- You are speaking immediately after the previous speaker above.
+- Avoid repeating the previous speaker’s core point. If you agree, reference it briefly and add a new reason, a different implication, or a targeted question.
+- If you have nothing useful to add, you may reply with the single word "SKIP".
 
 Guidance:
 - Move the game forward with a concrete claim, inference, or question.
@@ -97,6 +121,7 @@ Guidance:
           player: name,
           content: message,
         });
+        lastSpeakerName = name;
       }
     }
 
@@ -110,10 +135,21 @@ Guidance:
     for (let i = 0; i < alivePlayers.length; i++) {
       const player = alivePlayers[i]!;
       const name = player.config.name;
+      const nextSpeaker = alivePlayers[(i + 1) % aliveCount]?.config.name ?? 'none';
       const context = `
 Current Phase: Day ${engine.state.round}, Pre-vote Statement.
 This is your final public statement before voting. Speak as ${name}.
 Alive players: ${aliveNames.join(', ')}.
+Speaking order (fixed, round-robin): ${aliveNames.join(' -> ')}.
+Your position in the order: ${i + 1}/${aliveCount}. Next speaker: ${nextSpeaker}.
+Previous speaker: ${lastSpeakerName}.
+
+Turn protocol (important):
+- Discussion is strictly sequential / turn-based (one speaker at a time).
+- You are speaking immediately after the previous speaker above.
+- Avoid repeating what was just said unless you are adding a materially new angle.
+- If you have no read, say "SKIP".
+
 Instruction:
 - State your current #1 suspect OR say "skip" if you genuinely have no read.
 - Give a concrete reason tied to an event (vote, wording, inconsistency).
@@ -131,6 +167,7 @@ Instruction:
           player: name,
           content: message,
         });
+        lastSpeakerName = name;
       }
     }
 

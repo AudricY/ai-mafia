@@ -9,6 +9,7 @@ export async function collectFramerActions(
   const aliveNames = alivePlayers.map(p => p.config.name);
 
   const framers = alivePlayers.filter(p => p.role === 'framer');
+  if (framers.length === 0) return [];
   const actions: Array<Extract<NightActionIntent, { kind: 'frame' }>> = [];
 
   // Framers coordinate with the mafia team

@@ -76,28 +76,27 @@ export function resolveNightActions(input: NightResolutionInput): ResolvedNightA
     }
   }
 
-  // 1) Resolve blocks in priority order (highest priority first)
-  // Blocks are now blockable: if a blocker is already blocked, their block doesn't apply
+  // 1) Resolve blocks in priority order (highest priority first).
+  // Blocks are "blockable": if a blocker is already blocked, their block doesn't apply.
+  //
+  // IMPORTANT: Jailkeeper has highest priority; jails must apply before other blocks.
   const appliedBlocks = new Set<string>(); // Track which blockers successfully applied their block
 
-  // Sort blocks by priority (highest first)
-  blockActions.sort((a, b) => b.priority - a.priority);
-
-  for (const block of blockActions) {
-    // If this blocker is already blocked, their block doesn't apply
-    if (blockedPlayers.has(block.actor)) continue;
-    blockedPlayers.add(block.target);
-    appliedBlocks.add(block.actor);
-  }
-
-  // Jails apply after regular blocks (they have highest priority)
-  // Jails also protect, so add to savedPlayers
+  // Apply jails first (priority 3). Jails both block and protect.
   for (const jail of jailActions) {
     if (blockedPlayers.has(jail.actor)) continue;
     blockedPlayers.add(jail.target);
-    savedPlayers.add(jail.target); // Jails protect
+    savedPlayers.add(jail.target);
     jailedPlayers.add(jail.target);
     appliedBlocks.add(jail.actor);
+  }
+
+  // Then apply regular blocks, sorted by priority (roleblocker > mafia_roleblocker).
+  blockActions.sort((a, b) => b.priority - a.priority);
+  for (const block of blockActions) {
+    if (blockedPlayers.has(block.actor)) continue;
+    blockedPlayers.add(block.target);
+    appliedBlocks.add(block.actor);
   }
 
   // 2) Apply saves (blocked doctors don't save)
@@ -137,6 +136,9 @@ export function resolveNightActions(input: NightResolutionInput): ResolvedNightA
   for (const k of kills) {
     if (k.blocked) continue;
     if (k.saved) continue;
+    // Defensive: never allow mafia kill to kill a mafia-aligned player.
+    // (Other sources like vigilante or bomb retaliation are allowed to kill mafia.)
+    if (k.source === 'mafia' && isMafiaRole(input.rolesByPlayer[k.target])) continue;
     deaths.add(k.target);
   }
 
@@ -152,13 +154,6 @@ export function resolveNightActions(input: NightResolutionInput): ResolvedNightA
         bombRetaliations.add(killingAction.actor);
         deaths.add(killingAction.actor);
       }
-    }
-  }
-
-  // Defensive: never allow mafia-on-mafia deaths
-  for (const d of [...deaths]) {
-    if (isMafiaRole(input.rolesByPlayer[d])) {
-      deaths.delete(d);
     }
   }
 

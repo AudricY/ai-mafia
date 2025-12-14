@@ -10,6 +10,7 @@ export async function collectForgerActions(
   const aliveNames = alivePlayers.map(p => p.config.name);
 
   const forgers = alivePlayers.filter(p => p.role === 'forger');
+  if (forgers.length === 0) return [];
   const actions: Array<Extract<NightActionIntent, { kind: 'forge' }>> = [];
 
   // Forgers coordinate with the mafia team
