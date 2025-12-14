@@ -17,9 +17,11 @@
   - `AI_GATEWAY_API_KEY=...`
 - **Models**: all model ids in `game-config.yaml` must use **AI Gateway** `provider/model` format.
   - Examples: `openai/gpt-4o`, `anthropic/claude-sonnet-4.5`, `deepseek/deepseek-v3.2-thinking`
+- **Node**: Node.js >= 20 (required by transitive deps in `ai`)
 - **Run**:
-  - `npm install`
-  - `npm start`
+  - `corepack enable` (recommended)
+  - `pnpm install`
+  - `pnpm start`
 
 ## Repo Documentation Rule
 - **Do not create `README.md`**: all repo context, setup, and conventions must live in `AGENTS.md`.
