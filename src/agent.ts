@@ -97,7 +97,7 @@ export class Agent {
     this.logThoughts = opts?.logThoughts ?? false;
     this.memoryConfig = {
       publicWindowSize: opts?.memory?.publicWindowSize ?? 20,
-      summaryMaxChars: opts?.memory?.summaryMaxChars ?? 1200,
+      summaryMaxChars: opts?.memory?.summaryMaxChars ?? 3000,
     };
   }
 
@@ -137,7 +137,7 @@ export class Agent {
       logger.log({
         type: 'THOUGHT',
         player: this.config.name,
-        content: `Private fact added: ${this.truncate(text, 200)}`,
+        content: `Private fact added: ${text}`,
       });
     }
   }
@@ -152,7 +152,7 @@ export class Agent {
       logger.log({
         type: 'THOUGHT',
         player: this.config.name,
-        content: `Faction event recorded: ${this.truncate(text, 200)}`,
+        content: `Faction event recorded: ${text}`,
         metadata: { faction: this.factionMemory.faction },
       });
     }
@@ -226,10 +226,19 @@ ${systemConstraints ? `\n${systemConstraints.trim()}\n` : ''}
           .map(m => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content)))
       : [];
 
+    // We keep full summaries internally, but cap how much we feed back into the model context.
+    // This avoids runaway prompt growth while preserving full logs/debug output.
+    const privateSummaryForPrompt = this.privateSummary.trim()
+      ? this.truncate(this.privateSummary.trim(), this.memoryConfig.summaryMaxChars)
+      : '';
+    const factionSummaryForPrompt = factionSummary
+      ? this.truncate(factionSummary, this.memoryConfig.summaryMaxChars)
+      : '';
+
     const memoryBlock = [
-      this.privateSummary.trim() ? `Private running summary:\n${this.privateSummary.trim()}` : '',
+      privateSummaryForPrompt ? `Private running summary:\n${privateSummaryForPrompt}` : '',
       privateFacts.length ? `Private facts:\n- ${privateFacts.join('\n- ')}` : '',
-      factionSummary ? `Faction shared summary:\n${factionSummary}` : '',
+      factionSummaryForPrompt ? `Faction shared summary:\n${factionSummaryForPrompt}` : '',
       factionLines.length ? `Faction recent events:\n- ${factionLines.join('\n- ')}` : '',
       publicLines.length ? `Public recent events:\n- ${publicLines.join('\n- ')}` : '',
     ]
@@ -267,16 +276,14 @@ ${systemConstraints ? `\n${systemConstraints.trim()}\n` : ''}
         .join('\n');
 
       const nextSummary = await this.summarizeIntoRunningSummary(this.privateSummary, overflowText);
-      this.privateSummary = this.truncate(nextSummary, this.memoryConfig.summaryMaxChars);
+      // Keep full summary (no hard truncation). Prompt context is capped separately.
+      this.privateSummary = nextSummary;
       this.publicWindow = keep;
       if (this.logThoughts) {
         logger.log({
           type: 'THOUGHT',
           player: this.config.name,
-          content: `Updated private summary (compressed ${overflowCount} public events): ${this.truncate(
-            this.privateSummary,
-            300
-          )}`,
+          content: `Updated private summary (compressed ${overflowCount} public events): ${this.privateSummary}`,
         });
       }
     } finally {
@@ -302,16 +309,14 @@ ${systemConstraints ? `\n${systemConstraints.trim()}\n` : ''}
       const nextSummary = await this.summarizeIntoRunningSummary(this.factionMemory.sharedSummary, overflowText, {
         faction: this.factionMemory.faction,
       });
-      this.factionMemory.sharedSummary = this.truncate(nextSummary, this.memoryConfig.summaryMaxChars);
+      // Keep full summary (no hard truncation). Prompt context is capped separately.
+      this.factionMemory.sharedSummary = nextSummary;
       this.factionMemory.sharedWindow = keep;
       if (this.logThoughts) {
         logger.log({
           type: 'THOUGHT',
           player: this.config.name,
-          content: `Updated faction summary (compressed ${overflowCount} faction events): ${this.truncate(
-            this.factionMemory.sharedSummary,
-            300
-          )}`,
+          content: `Updated faction summary (compressed ${overflowCount} faction events): ${this.factionMemory.sharedSummary}`,
           metadata: { faction: this.factionMemory.faction },
         });
       }
@@ -386,6 +391,7 @@ ${newEventsText.trim()}
   }
 
   private truncate(text: string, maxChars: number): string {
+    if (!Number.isFinite(maxChars) || maxChars <= 0) return text;
     if (text.length <= maxChars) return text;
     return text.slice(0, Math.max(0, maxChars - 1)).trimEnd() + '…';
   }
@@ -445,7 +451,7 @@ ${newEventsText.trim()}
           logger.log({
             type: 'THOUGHT',
             player: this.config.name,
-            content: `Thought update: ${this.truncate(thoughts, 300)}`,
+            content: `Thought update: ${thoughts}`,
           });
         }
         this.observePrivateEvent(`Thought update: ${thoughts}`);
@@ -485,7 +491,7 @@ Output format:
           logger.log({
             type: 'THOUGHT',
             player: this.config.name,
-            content: `Thought update: ${this.truncate(thoughts, 300)}`,
+            content: `Thought update: ${thoughts}`,
           });
         }
         if (thoughts) this.observePrivateEvent(`Thought update: ${thoughts}`);
@@ -520,7 +526,7 @@ Output format:
           logger.log({
             type: 'THOUGHT',
             player: this.config.name,
-            content: `Decision rationale (${choice}): ${this.truncate(rationale, 300)}`,
+            content: `Decision rationale (${choice}): ${rationale}`,
           });
         }
         this.observePrivateEvent(`Decision rationale (${choice}): ${rationale}`);
@@ -560,7 +566,7 @@ Output format:
           logger.log({
             type: 'THOUGHT',
             player: this.config.name,
-            content: `Decision rationale (${matched}): ${this.truncate(rationale, 300)}`,
+            content: `Decision rationale (${matched}): ${rationale}`,
           });
         }
         if (rationale) this.observePrivateEvent(`Decision rationale (${matched}): ${rationale}`);
@@ -573,7 +579,7 @@ Output format:
         logger.log({
           type: 'THOUGHT',
           player: this.config.name,
-          content: `Decision output (unparsed): ${this.truncate(raw, 300)}`,
+          content: `Decision output (unparsed): ${raw}`,
         });
       }
       return matched ?? options[0];
