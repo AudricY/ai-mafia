@@ -49,7 +49,7 @@ export interface GameState {
 
 // --- Logging Types ---
 
-export type LogType = 'SYSTEM' | 'CHAT' | 'ACTION' | 'VOTE' | 'DEATH' | 'WIN' | 'THOUGHT';
+export type LogType = 'SYSTEM' | 'CHAT' | 'ACTION' | 'VOTE' | 'DEATH' | 'WIN' | 'THOUGHT' | 'FACTION_CHAT';
 
 export interface GameLogEntry {
   id: string;
