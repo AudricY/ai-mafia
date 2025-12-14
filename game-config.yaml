@@ -6,25 +6,25 @@ system_prompt: |
 
 players:
   - name: "Alice"
-    model: "deepseek-v3.2-thinking"
+    model: "deepseek/deepseek-v3.2-thinking"
     temperature: 0.8
     systemPrompt: "You are loud and accuse people quickly."
 
   - name: "Bob"
-    model: "deepseek-v3.2-thinking"
+    model: "deepseek/deepseek-v3.2-thinking"
     temperature: 0.6
     systemPrompt: "You are analytical and quiet."
 
   - name: "Charlie"
-    model: "deepseek-v3.2-thinking"
+    model: "deepseek/deepseek-v3.2-thinking"
     temperature: 0.9
     systemPrompt: "You are chaotic and tell jokes."
 
   - name: "Dave"
-    model: "deepseek-v3.2-thinking"
+    model: "deepseek/deepseek-v3.2-thinking"
     
   - name: "Eve"
-    model: "deepseek-v3.2-thinking"
+    model: "deepseek/deepseek-v3.2-thinking"
 
 roles:
   Alice: mafia

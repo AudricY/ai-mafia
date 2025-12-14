@@ -1,4 +1,5 @@
 import { GameConfig, GameState, PlayerState, Role } from './types.js';
+import type { CoreMessage } from 'ai';
 import { Agent } from './agent.js';
 import { logger } from './logger.js';
 
@@ -203,7 +204,7 @@ export class Game {
          const name = player.config.name;
          // Construct public context from recent history
          // In a real app we'd summarize headers, but here we pass raw messages
-         const recentHistory = this.state.history
+         const recentHistory: CoreMessage[] = this.state.history
            .filter(h => h.type === 'CHAT' || h.type === 'DEATH' || h.type === 'SYSTEM')
            .slice(-10) // Context window limit
            .map(h => ({
