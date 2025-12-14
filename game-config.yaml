@@ -22,15 +22,12 @@ players:
     model: "deepseek/deepseek-v3.2"
     
   - name: "Eve"
-    model: "deepseek/deepseek-v3.2-thinking"
+    model: "deepseek/deepseek-v3.2"
 
   - name: "Frank"
     model: "deepseek/deepseek-v3.2"
 
   - name: "Grace"
-    model: "deepseek/deepseek-v3.2"
-
-  - name: "Henry"
     model: "deepseek/deepseek-v3.2"
 
 roles:
@@ -41,4 +38,4 @@ roles:
   Eve: vigilante
   Frank: roleblocker
   Grace: tracker
-  Henry: villager
+

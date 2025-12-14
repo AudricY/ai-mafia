@@ -16,7 +16,7 @@ export class DayDiscussionPhase {
       `Last night deaths: ${engine.lastNightDeaths.length ? engine.lastNightDeaths.join(', ') : 'none'}`,
       engine.state.round > 1
         ? `Yesterday's votes: ${voteTally ? engine.formatVoteTally(voteTally) : '(no vote data)'}`
-        : `Yesterday's votes: (Day 0)`,
+        : `Yesterday's votes: (none yet)`,
     ];
     engine.recordPublic({
       type: 'SYSTEM',
