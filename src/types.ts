@@ -19,6 +19,9 @@ export const GameConfigSchema = z.object({
   system_prompt: z.string().default('You are playing a game of Mafia.'),
   players: z.array(PlayerConfigSchema),
   roles: z.record(z.string(), RoleSchema).optional(), // Map player name to role (optional, for forced assignment)
+  memory_window_size: z.number().int().positive().default(20),
+  memory_summary_max_chars: z.number().int().positive().default(1200),
+  enable_faction_memory: z.boolean().default(true),
   // If roles are not explicitly assigned, the game engine will randomize them based on player count
 });
 export type GameConfig = z.infer<typeof GameConfigSchema>;

@@ -1,21 +1,28 @@
-import { GameConfig, GameState, PlayerState, Role } from './types.js';
-import type { CoreMessage } from 'ai';
-import { Agent } from './agent.js';
+import { GameConfig, GameState, PlayerState, GameLogEntry } from './types.js';
+import { Agent, FactionMemory, createFactionMemory } from './agent.js';
 import { logger } from './logger.js';
 
 export class Game {
   private config: GameConfig;
   private state: GameState;
   private agents: Record<string, Agent>;
+  private mafiaMemory?: FactionMemory;
 
   constructor(config: GameConfig) {
     this.config = config;
     this.agents = {};
+    this.mafiaMemory = config.enable_faction_memory ? createFactionMemory('mafia') : undefined;
     const players: Record<string, PlayerState> = {};
 
     // Initialize players and agents
     config.players.forEach(p => {
-      this.agents[p.name] = new Agent(p);
+      this.agents[p.name] = new Agent(p, {
+        gameRules: config.system_prompt,
+        memory: {
+          publicWindowSize: config.memory_window_size,
+          summaryMaxChars: config.memory_summary_max_chars,
+        },
+      });
       players[p.name] = {
         config: p,
         role: 'villager', 
@@ -35,6 +42,23 @@ export class Game {
     this.assignRoles();
   }
 
+  private broadcastPublicEvent(entry: Omit<GameLogEntry, 'id' | 'timestamp'>) {
+    for (const [name, ps] of Object.entries(this.state.players)) {
+      if (!ps.isAlive) continue;
+      this.agents[name]?.observePublicEvent(entry);
+    }
+  }
+
+  private recordPublic(entry: Omit<GameLogEntry, 'id' | 'timestamp'>) {
+    this.state.history.push({
+      id: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      ...entry,
+    });
+    this.broadcastPublicEvent(entry);
+    logger.log(entry);
+  }
+
   private assignRoles() {
     const playerNames = Object.keys(this.state.players);
     const shuffled = [...playerNames].sort(() => Math.random() - 0.5);
@@ -45,10 +69,8 @@ export class Game {
       for (const [name, role] of Object.entries(this.config.roles)) {
         if (this.state.players[name]) {
           this.state.players[name].role = role;
-          // IMPORTANT: Update the agent so it knows its role for prompts!
-          // We need a setter in Agent or pass it during action generation.
-          // For now, let's just assume `generateDecision` uses the `context` we pass it efficiently
-          // effectively injecting the role knowledge.
+          this.agents[name]?.setRole(role);
+          this.agents[name]?.setFactionMemory(role === 'mafia' ? this.mafiaMemory : undefined);
         }
       }
     } else {
@@ -64,24 +86,26 @@ export class Game {
 
     // Log roles (system only)
     Object.values(this.state.players).forEach(p => {
-      // Sync role to agent helper (we will modify Agent class slightly to store this if needed, 
-      // but purely context injection works too. Let's rely on context injection for now to keep it stateless).
+      this.agents[p.config.name]?.setRole(p.role);
+      this.agents[p.config.name]?.setFactionMemory(p.role === 'mafia' ? this.mafiaMemory : undefined);
       logger.log({
         type: 'SYSTEM',
         content: `Assigned role ${p.role} to ${p.config.name}`,
-        metadata: { role: p.role, player: p.config.name }
+        metadata: { role: p.role, player: p.config.name },
       });
+      // Private role knowledge for the agent itself.
+      this.agents[p.config.name]?.observePrivateEvent(`Your role is ${p.role}.`);
     });
   }
 
   async start() {
-    logger.log({ type: 'SYSTEM', content: 'Game Starting...' });
+    this.recordPublic({ type: 'SYSTEM', content: 'Game Starting...' });
     
     while (!this.state.winners) {
       await this.playRound();
     }
 
-    logger.log({ type: 'WIN', content: `Game Over! Winners: ${this.state.winners}` });
+    this.recordPublic({ type: 'WIN', content: `Game Over! Winners: ${this.state.winners}` });
   }
 
   private async playRound() {
@@ -107,7 +131,7 @@ export class Game {
   }
 
   private async nightPhase() {
-    logger.log({ type: 'SYSTEM', content: `--- Night ${this.state.round} ---` });
+    this.recordPublic({ type: 'SYSTEM', content: `--- Night ${this.state.round} ---` });
     
     const alivePlayers = Object.values(this.state.players).filter(p => p.isAlive);
     const aliveNames = alivePlayers.map(p => p.config.name);
@@ -124,9 +148,10 @@ export class Game {
       
       if (validTargets.length > 0) {
         targetToKill = await this.agents[killer.config.name].generateDecision(
-          `You are Mafia. Choose a villager to kill.`,
+          `Night ${this.state.round}. You are Mafia. Choose a non-mafia player to kill.`,
           validTargets
         );
+        this.agents[killer.config.name]?.observeFactionEvent(`We chose to kill ${targetToKill} on night ${this.state.round}.`);
         logger.log({ 
           type: 'ACTION', 
           player: killer.config.name, 
@@ -143,14 +168,15 @@ export class Game {
       const validTargets = aliveNames.filter(n => n !== cop.config.name);
       if (validTargets.length > 0) {
         const target = await this.agents[cop.config.name].generateDecision(
-           `You are the Cop. Choose a player to investigate to see if they are Mafia.`,
+           `Night ${this.state.round}. You are the Cop. Choose a player to investigate to see if they are Mafia.`,
            validTargets
         );
         const isMafia = this.state.players[target].role === 'mafia';
         const result = isMafia ? 'MAFIA' : 'INNOCENT';
         
-        // Give knowledge to Cop (update their notes/context)
-        // For now, just log it as a private system event for the cop
+        this.agents[cop.config.name]?.observePrivateEvent(
+          `Investigation result (night ${this.state.round}): ${target} is ${result}.`
+        );
         logger.log({
           type: 'ACTION',
           player: cop.config.name,
@@ -167,8 +193,11 @@ export class Game {
     if (doctors.length > 0) {
       const doc = doctors[0];
       savedTarget = await this.agents[doc.config.name].generateDecision(
-        `You are the Doctor. Choose a player to save from potential assassination.`,
+        `Night ${this.state.round}. You are the Doctor. Choose a player to save from potential assassination.`,
         aliveNames
+      );
+      this.agents[doc.config.name]?.observePrivateEvent(
+        `Doctor action (night ${this.state.round}): you chose to save ${savedTarget}.`
       );
       logger.log({
         type: 'ACTION',
@@ -181,18 +210,18 @@ export class Game {
     // Resolution
     if (targetToKill) {
       if (targetToKill === savedTarget) {
-        logger.log({ type: 'SYSTEM', content: `Mafia tried to kill ${targetToKill}, but they were saved by the Doctor!` });
+        this.recordPublic({ type: 'SYSTEM', content: `Mafia tried to kill ${targetToKill}, but they were saved by the Doctor!` });
       } else {
         this.killPlayer(targetToKill);
-        logger.log({ type: 'DEATH', content: `${targetToKill} was killed during the night.` });
+        this.recordPublic({ type: 'SYSTEM', content: `${targetToKill} was killed during the night.` });
       }
     } else {
-      logger.log({ type: 'SYSTEM', content: 'Peaceful night. No one died.' });
+      this.recordPublic({ type: 'SYSTEM', content: 'Peaceful night. No one died.' });
     }
   }
 
   private async dayPhase() {
-    logger.log({ type: 'SYSTEM', content: `--- Day ${this.state.round} Discussion ---` });
+    this.recordPublic({ type: 'SYSTEM', content: `--- Day ${this.state.round} Discussion ---` });
     
     // Configurable rounds of discussion
     const discussionRounds = this.config.rounds || 3;
@@ -202,24 +231,14 @@ export class Game {
        // Round robin
        for (const player of alivePlayers) {
          const name = player.config.name;
-         // Construct public context from recent history
-         // In a real app we'd summarize headers, but here we pass raw messages
-         const recentHistory: CoreMessage[] = this.state.history
-           .filter(h => h.type === 'CHAT' || h.type === 'DEATH' || h.type === 'SYSTEM')
-           .slice(-10) // Context window limit
-           .map(h => ({
-             role: (h.player ? 'user' : 'system') as 'user' | 'system', // simplify mapping
-             content: h.player ? `${h.player}: ${h.content}` : `[SYSTEM]: ${h.content}`
-           }));
-
          const context = `
-           Current Phase: Day ${this.state.round}, Discussion Round ${r + 1}.
-           You are ${name}. Your role is ${player.role}.
-           Goal: Convince others, find mafia (or hide if you are mafia).
-           Alive players: ${alivePlayers.map(p => p.config.name).join(', ')}.
-         `;
+Current Phase: Day ${this.state.round}, Discussion Round ${r + 1}.
+This is your public speaking turn. Speak as ${name}.
+Goal: Convince others, find mafia (or hide if you are mafia).
+Alive players: ${alivePlayers.map(p => p.config.name).join(', ')}.
+         `.trim();
 
-         const message = await this.agents[name].generateResponse(context, recentHistory);
+         const message = await this.agents[name].generateResponse(context, []);
          
          const entry = {
            type: 'CHAT' as const,
@@ -227,21 +246,13 @@ export class Game {
            content: message
          };
          
-         // Add to local state history
-         this.state.history.push({
-           id: crypto.randomUUID(),
-           timestamp: new Date().toISOString(),
-           ...entry
-         });
-         
-         // Log it
-         logger.log(entry);
+         this.recordPublic(entry);
        }
     }
   }
 
   private async votingPhase() {
-    logger.log({ type: 'SYSTEM', content: `--- Day ${this.state.round} Voting ---` });
+    this.recordPublic({ type: 'SYSTEM', content: `--- Day ${this.state.round} Voting ---` });
     
     const alivePlayers = Object.values(this.state.players).filter(p => p.isAlive);
     const aliveNames = alivePlayers.map(p => p.config.name);
@@ -252,11 +263,11 @@ export class Game {
 
     for (const player of alivePlayers) {
       const vote = await this.agents[player.config.name].generateDecision(
-        `It is time to vote. Choose a player to eliminate or 'skip'.`,
+        `Day ${this.state.round} voting. Choose a player to eliminate or 'skip'.`,
         options
       );
       
-      logger.log({
+      this.recordPublic({
         type: 'VOTE',
         player: player.config.name,
         content: `voted for ${vote}`,
@@ -282,17 +293,17 @@ export class Game {
     }
 
     if (candidate && !tie && candidate !== 'skip') {
-      logger.log({ type: 'SYSTEM', content: `The town has voted to eliminate ${candidate} with ${maxVotes} votes.` });
+      this.recordPublic({ type: 'SYSTEM', content: `The town has voted to eliminate ${candidate} with ${maxVotes} votes.` });
       this.killPlayer(candidate);
     } else {
-      logger.log({ type: 'SYSTEM', content: `Vote result: ${tie ? 'Tie' : 'Skip'}. No one was eliminated.` });
+      this.recordPublic({ type: 'SYSTEM', content: `Vote result: ${tie ? 'Tie' : 'Skip'}. No one was eliminated.` });
     }
   }
 
   private killPlayer(name: string) {
     if (this.state.players[name]) {
       this.state.players[name].isAlive = false;
-      logger.log({
+      this.recordPublic({
         type: 'DEATH',
         player: name,
         content: `has died. Their role was ${this.state.players[name].role}.`,
