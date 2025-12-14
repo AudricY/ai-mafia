@@ -14,7 +14,7 @@
     "dev:dry-run": "tsx watch src/index.ts --dry-run",
     "build": "tsc",
     "check": "tsc --noEmit",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --import tsx --test src/*/*.test.ts"
   },
   "keywords": [],
   "author": "",

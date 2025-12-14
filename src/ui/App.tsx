@@ -209,7 +209,9 @@ export function App(props: { players: string[] }) {
   });
 
   const visibleEntries = useMemo(() => {
-    const publicTypes = new Set<GameLogEntry['type']>(['SYSTEM', 'CHAT', 'VOTE', 'DEATH', 'WIN']);
+    // Types that are inherently public even if metadata is missing.
+    // NOTE: SYSTEM entries must explicitly opt into public visibility; otherwise they may leak private info.
+    const publicTypes = new Set<GameLogEntry['type']>(['CHAT', 'VOTE', 'DEATH', 'WIN']);
 
     const povPlayer = typeof pov === 'object' ? pov.player : null;
     const povRole = povPlayer ? playerRoles[povPlayer] : undefined;
@@ -225,11 +227,15 @@ export function App(props: { players: string[] }) {
       }
 
       if (pov === 'PUBLIC') {
-        return visibility === 'public' || publicTypes.has(e.type);
+        if (publicTypes.has(e.type)) return true;
+        if (e.type === 'SYSTEM') return visibility !== 'private' && visibility !== 'faction';
+        return visibility === 'public';
       }
 
       // Player POV
-      if (visibility === 'public' || publicTypes.has(e.type)) return true;
+      if (publicTypes.has(e.type)) return true;
+      if (e.type === 'SYSTEM' && visibility !== 'private' && visibility !== 'faction') return true;
+      if (visibility === 'public') return true;
 
       if (e.type === 'THOUGHT') return e.player === povPlayer;
 

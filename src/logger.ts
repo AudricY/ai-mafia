@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import chalk from 'chalk';
 import { GameLogEntry, LogType, Role } from './types.js';
+import { eventBus } from './events/index.js';
 
 const ROLE_COLORS: Record<string, (text: string) => string> = {
   mafia: chalk.red,
@@ -39,6 +40,11 @@ export class GameLogger {
       fs.mkdirSync(logDir);
     }
     this.logFile = path.join(logDir, `game-${timestamp}.json`);
+
+    // The logger subscribes to the global event bus and persists/prints entries.
+    eventBus.subscribe((entry) => {
+      this.handleEntry(entry);
+    });
   }
 
   setKnownPlayers(names: string[]) {
@@ -69,51 +75,72 @@ export class GameLogger {
     return this.logs.slice();
   }
 
-  log(entry: Omit<GameLogEntry, 'id' | 'timestamp'>) {
-    const inferredRole: Role | undefined =
-      entry.player && !entry.metadata?.role ? this.playerRoles.get(entry.player) : undefined;
-
+  /**
+   * Emit a log entry to the global event bus, returning the fully materialized entry.
+   *
+   * This is the preferred way for the engine to log; the logger itself listens on the bus
+   * and persists/prints entries. Callers should not mutate the returned object.
+   */
+  log(entry: Omit<GameLogEntry, 'id' | 'timestamp'>): GameLogEntry {
     const fullEntry: GameLogEntry = {
       id: crypto.randomUUID(),
       timestamp: new Date().toISOString(),
       ...entry,
-      metadata:
-        inferredRole !== undefined
-          ? { ...(entry.metadata ?? {}), role: inferredRole }
-          : entry.metadata,
     };
+    const enriched = this.enrichEntry(fullEntry);
+    eventBus.emit(enriched);
+    return enriched;
+  }
 
-    this.logs.push(fullEntry);
+  /**
+   * Emit an already-constructed log entry (e.g., if an engine wants to set its own id/timestamp).
+   */
+  emit(entry: GameLogEntry): void {
+    eventBus.emit(this.enrichEntry(entry));
+  }
+
+  private enrichEntry(entry: GameLogEntry): GameLogEntry {
+    const inferredRole: Role | undefined =
+      entry.player && !entry.metadata?.role ? this.playerRoles.get(entry.player) : undefined;
+    if (inferredRole === undefined) return entry;
+    return {
+      ...entry,
+      metadata: { ...(entry.metadata ?? {}), role: inferredRole },
+    };
+  }
+
+  private handleEntry(entry: GameLogEntry) {
+    this.logs.push(entry);
     this.flush();
 
     for (const sub of this.subscribers) {
       try {
-        sub(fullEntry);
+        sub(entry);
       } catch {
         // Never let UI/log subscribers crash the game loop.
       }
     }
-    
+
     // Console output for visibility
     if (!this.consoleOutputEnabled) return;
 
-    const timeStr = fullEntry.timestamp.split('T')[1].split('.')[0];
+    const timeStr = entry.timestamp.split('T')[1]?.split('.')[0] ?? entry.timestamp;
     const prefix = chalk.gray(`[${timeStr}]`);
-    
-    const typeColor = TYPE_COLORS[fullEntry.type] || chalk.white;
-    const typeStr = typeColor(`[${fullEntry.type}]`);
-    
+
+    const typeColor = TYPE_COLORS[entry.type] || chalk.white;
+    const typeStr = typeColor(`[${entry.type}]`);
+
     let playerInfo = '';
-    if (fullEntry.player) {
+    if (entry.player) {
       // Use a distinct color for player names, or maybe generate one based on hash?
       // For now, let's use a nice bright color.
-      const role = (fullEntry.metadata?.role ?? this.playerRoles.get(fullEntry.player)) as Role | undefined;
+      const role = (entry.metadata?.role ?? this.playerRoles.get(entry.player)) as Role | undefined;
       const roleStr = role ? ` ${ROLE_COLORS[role]?.(role) ?? role}` : '';
-      playerInfo = ` <${chalk.hex('#FFA500')(fullEntry.player)}${roleStr}>`;
+      playerInfo = ` <${chalk.hex('#FFA500')(entry.player)}${roleStr}>`;
     }
 
     // Highlight roles in content
-    let content = fullEntry.content;
+    let content = entry.content;
     const rolePattern = /\b(villager|mafia|cop|doctor|vigilante|roleblocker|godfather)s?\b/gi;
     content = content.replace(rolePattern, (match) => {
       const lower = match.toLowerCase().replace(/s$/, '') as string; // simple singularization
@@ -133,8 +160,8 @@ export class GameLogger {
       if (names.length > 0) {
         const playerPattern = new RegExp(`\\b(${names.join('|')})\\b`, 'g');
         content = content.replace(playerPattern, (match) => {
-           // Use the same color as the player prefix
-           return chalk.hex('#FFA500')(match);
+          // Use the same color as the player prefix
+          return chalk.hex('#FFA500')(match);
         });
       }
     }

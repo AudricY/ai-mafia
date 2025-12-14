@@ -58,6 +58,7 @@ export interface GameState {
   players: Record<string, PlayerState>;
   history: GameLogEntry[];
   winners?: 'mafia' | 'villagers';
+  abortReason?: string;
 }
 
 // --- Logging Types ---
