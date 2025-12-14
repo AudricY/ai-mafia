@@ -34,6 +34,10 @@ export class Agent {
     try {
       // Allow overriding the model if needed, default to what's in config
       // Note: In a real app we might want to support other providers
+      logger.log({
+        type: 'SYSTEM',
+        content: `Initializing model for ${this.config.name}: ${this.config.model}`
+      });
       const model = openai(this.config.model);
 
       const systemPrompt = `
