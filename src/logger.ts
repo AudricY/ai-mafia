@@ -29,6 +29,9 @@ export class GameLogger {
   private logFile: string;
   private logs: GameLogEntry[] = [];
   private knownPlayers: Set<string> = new Set();
+  private consoleOutputEnabled = true;
+  private subscribers: Set<(entry: GameLogEntry) => void> = new Set();
+  private playerRoles: Map<string, Role> = new Map();
 
   constructor() {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -43,17 +46,58 @@ export class GameLogger {
     this.knownPlayers = new Set(names);
   }
 
+  setConsoleOutputEnabled(enabled: boolean) {
+    this.consoleOutputEnabled = enabled;
+  }
+
+  subscribe(cb: (entry: GameLogEntry) => void): () => void {
+    this.subscribers.add(cb);
+    return () => {
+      this.subscribers.delete(cb);
+    };
+  }
+
+  setPlayerRoles(roles: Record<string, Role>) {
+    this.playerRoles = new Map(Object.entries(roles));
+  }
+
+  setPlayerRole(player: string, role: Role) {
+    this.playerRoles.set(player, role);
+  }
+
+  getLogs(): GameLogEntry[] {
+    // Return a shallow copy so callers can't mutate logger state.
+    return this.logs.slice();
+  }
+
   log(entry: Omit<GameLogEntry, 'id' | 'timestamp'>) {
+    const inferredRole: Role | undefined =
+      entry.player && !entry.metadata?.role ? this.playerRoles.get(entry.player) : undefined;
+
     const fullEntry: GameLogEntry = {
       id: crypto.randomUUID(),
       timestamp: new Date().toISOString(),
       ...entry,
+      metadata:
+        inferredRole !== undefined
+          ? { ...(entry.metadata ?? {}), role: inferredRole }
+          : entry.metadata,
     };
 
     this.logs.push(fullEntry);
     this.flush();
+
+    for (const sub of this.subscribers) {
+      try {
+        sub(fullEntry);
+      } catch {
+        // Never let UI/log subscribers crash the game loop.
+      }
+    }
     
     // Console output for visibility
+    if (!this.consoleOutputEnabled) return;
+
     const timeStr = fullEntry.timestamp.split('T')[1].split('.')[0];
     const prefix = chalk.gray(`[${timeStr}]`);
     
@@ -64,7 +108,9 @@ export class GameLogger {
     if (fullEntry.player) {
       // Use a distinct color for player names, or maybe generate one based on hash?
       // For now, let's use a nice bright color.
-      playerInfo = ` <${chalk.hex('#FFA500')(fullEntry.player)}>`;
+      const role = (fullEntry.metadata?.role ?? this.playerRoles.get(fullEntry.player)) as Role | undefined;
+      const roleStr = role ? ` ${ROLE_COLORS[role]?.(role) ?? role}` : '';
+      playerInfo = ` <${chalk.hex('#FFA500')(fullEntry.player)}${roleStr}>`;
     }
 
     // Highlight roles in content

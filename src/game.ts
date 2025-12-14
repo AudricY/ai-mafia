@@ -55,13 +55,18 @@ export class Game {
   }
 
   private recordPublic(entry: Omit<GameLogEntry, 'id' | 'timestamp'>) {
+    // Mark as public so the UI can render "player POV" views correctly.
+    const entryWithVisibility: Omit<GameLogEntry, 'id' | 'timestamp'> = {
+      ...entry,
+      metadata: { ...(entry.metadata ?? {}), visibility: 'public' },
+    };
     this.state.history.push({
       id: crypto.randomUUID(),
       timestamp: new Date().toISOString(),
-      ...entry,
+      ...entryWithVisibility,
     });
-    this.broadcastPublicEvent(entry);
-    logger.log(entry);
+    this.broadcastPublicEvent(entryWithVisibility);
+    logger.log(entryWithVisibility);
   }
 
   private getVoteTallyForDay(day: number): Record<string, number> | null {
@@ -117,14 +122,20 @@ export class Game {
     Object.values(this.state.players).forEach(p => {
       this.agents[p.config.name]?.setRole(p.role);
       this.agents[p.config.name]?.setFactionMemory(['mafia', 'godfather'].includes(p.role) ? this.mafiaMemory : undefined);
+      logger.setPlayerRole(p.config.name, p.role);
       logger.log({
         type: 'SYSTEM',
         content: `Assigned role ${p.role} to ${p.config.name}`,
-        metadata: { role: p.role, player: p.config.name },
+        metadata: { role: p.role, player: p.config.name, visibility: 'private' },
       });
       // Private role knowledge for the agent itself.
       this.agents[p.config.name]?.observePrivateEvent(`Your role is ${p.role}.`);
     });
+
+    // Let the logger auto-tag future entries with actor roles.
+    logger.setPlayerRoles(
+      Object.fromEntries(Object.entries(this.state.players).map(([name, ps]) => [name, ps.role]))
+    );
   }
 
   async start() {
@@ -193,7 +204,7 @@ Guidance (soft):
           type: 'ACTION',
           player: rb.config.name,
           content: `blocked ${target}`,
-          metadata: { target, role: 'roleblocker' }
+          metadata: { target, role: 'roleblocker', visibility: 'private' }
         });
       }
     }
@@ -231,7 +242,7 @@ Alive players: ${aliveNames.join(', ')}.`;
                type: 'FACTION_CHAT', 
                player: member.config.name, 
                content: message, 
-               metadata: { role: member.role } 
+               metadata: { role: member.role, faction: 'mafia', visibility: 'faction' } 
              });
           }
         }
@@ -260,7 +271,7 @@ Alive players: ${aliveNames.join(', ')}.`;
             type: 'ACTION', 
             player: shooter.config.name, 
             content: `chose to kill ${mafiaTarget}`,
-            metadata: { target: mafiaTarget, role: shooter.role }
+            metadata: { target: mafiaTarget, role: shooter.role, faction: 'mafia', visibility: 'faction' }
           });
         }
       }
@@ -299,7 +310,7 @@ Guidance (soft):
           type: 'ACTION',
           player: cop.config.name,
           content: `investigated ${target} and found ${result}`,
-          metadata: { target, result, role: 'cop' }
+          metadata: { target, result, role: 'cop', visibility: 'private' }
         });
       }
     }
@@ -330,7 +341,7 @@ Guidance (soft):
         type: 'ACTION',
         player: doc.config.name,
         content: `chose to save ${doctorTarget}`,
-        metadata: { target: doctorTarget, role: 'doctor' }
+        metadata: { target: doctorTarget, role: 'doctor', visibility: 'private' }
       });
     }
 
@@ -368,7 +379,7 @@ Guidance (soft):
                 type: 'ACTION',
                 player: vigi.config.name,
                 content: `chose to shoot ${vigilanteTarget}`,
-                metadata: { target: vigilanteTarget, role: 'vigilante' }
+                metadata: { target: vigilanteTarget, role: 'vigilante', visibility: 'private' }
             });
          }
       }

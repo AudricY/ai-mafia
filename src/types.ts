@@ -51,11 +51,30 @@ export interface GameState {
 
 export type LogType = 'SYSTEM' | 'CHAT' | 'ACTION' | 'VOTE' | 'DEATH' | 'WIN' | 'THOUGHT' | 'FACTION_CHAT';
 
+export type LogVisibility = 'public' | 'private' | 'faction';
+export type Faction = 'mafia';
+
+export interface GameLogMetadata {
+  // Common structured fields (used by the UI and game engine)
+  role?: Role;
+  faction?: Faction;
+  visibility?: LogVisibility;
+
+  // Frequently used game fields
+  player?: string; // player referred-to (not necessarily the actor)
+  target?: string;
+  vote?: string | number;
+  result?: string;
+
+  // Allow additional structured fields without `any`
+  [key: string]: unknown;
+}
+
 export interface GameLogEntry {
   id: string;
   timestamp: string;
   type: LogType;
   player?: string;
   content: string;
-  metadata?: Record<string, any>;
+  metadata?: GameLogMetadata;
 }

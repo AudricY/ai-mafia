@@ -8,10 +8,12 @@ function parseArgs(argv: string[]): {
   configFile: string;
   dryRun: boolean;
   dryRunSeed?: number;
+  ui: boolean;
 } {
   let configFile: string | undefined;
   let dryRun = false;
   let dryRunSeed: number | undefined;
+  let ui = true;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -25,6 +27,11 @@ function parseArgs(argv: string[]): {
 
     if (arg === '--dry-run' || arg === '--dryrun') {
       dryRun = true;
+      continue;
+    }
+
+    if (arg === '--no-ui' || arg === '--no-tui') {
+      ui = false;
       continue;
     }
 
@@ -54,7 +61,7 @@ function parseArgs(argv: string[]): {
     if (!configFile) configFile = arg;
   }
 
-  return { configFile: configFile ?? 'game-config.yaml', dryRun, dryRunSeed };
+  return { configFile: configFile ?? 'game-config.yaml', dryRun, dryRunSeed, ui };
 }
 
 async function main() {
@@ -62,6 +69,12 @@ async function main() {
   dotenv.config();
 
   const args = parseArgs(process.argv.slice(2));
+  if (args.ui) {
+    // We'll render through the Ink TUI instead of printing raw lines.
+    // Note: we still write structured JSON logs to disk regardless.
+    logger.setConsoleOutputEnabled(false);
+  }
+
   if (args.dryRun) {
     process.env.AI_MAFIA_DRY_RUN = '1';
     if (args.dryRunSeed !== undefined) process.env.AI_MAFIA_DRY_RUN_SEED = String(args.dryRunSeed);
@@ -83,8 +96,26 @@ async function main() {
 
   try {
     const config = loadConfig(configPath);
+    const ui = args.ui ? (await import('./ui/runUi.js')).runUi({ players: config.players.map(p => p.name) }) : null;
     const game = new Game(config);
-    await game.start();
+    const gamePromise = game.start();
+
+    if (!ui) {
+      await gamePromise;
+      return;
+    }
+
+    const uiPromise = ui.waitUntilExit().then(() => {
+      // If the user exits the UI early, fall back to normal console output
+      // so the game doesn't continue silently.
+      logger.setConsoleOutputEnabled(true);
+    });
+
+    try {
+      await Promise.all([gamePromise, uiPromise]);
+    } finally {
+      ui.unmount();
+    }
   } catch (error) {
     console.error('Fatal Error:', error);
     process.exit(1);
