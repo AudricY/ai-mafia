@@ -1,0 +1,34 @@
+rounds: 3
+system_prompt: |
+  You are a player in a game of Mafia. 
+  Your goal is to survive and eliminate the opposing team.
+  Be persuasive, deceptive if necessary, and observant.
+
+players:
+  - name: "Alice"
+    model: "gpt-4o"
+    temperature: 0.8
+    systemPrompt: "You are loud and accuse people quickly."
+
+  - name: "Bob"
+    model: "gpt-4o"
+    temperature: 0.6
+    systemPrompt: "You are analytical and quiet."
+
+  - name: "Charlie"
+    model: "gpt-4o"
+    temperature: 0.9
+    systemPrompt: "You are chaotic and tell jokes."
+
+  - name: "Dave"
+    model: "gpt-4o-mini"
+    
+  - name: "Eve"
+    model: "gpt-4o-mini"
+
+roles:
+  Alice: mafia
+  Bob: cop
+  Charlie: doctor
+  Dave: villager
+  Eve: villager

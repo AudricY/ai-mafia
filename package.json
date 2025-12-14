@@ -1,0 +1,29 @@
+{
+  "name": "ai-mafia",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "check": "tsc --noEmit",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@ai-sdk/openai": "^2.0.86",
+    "ai": "^5.0.113",
+    "dotenv": "^17.2.3",
+    "tsx": "^4.21.0",
+    "yaml": "^2.8.2",
+    "zod": "^4.1.13"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.2",
+    "@types/yaml": "^1.9.7",
+    "typescript": "^5.9.3"
+  }
+}
