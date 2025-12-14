@@ -9,9 +9,15 @@
 
 ## Key Files
 - `src/config.ts`: Zod schemas for `GameConfig`.
-- `src/game.ts`: Main game loop (Day/Night cycles).
+- `src/game.ts`: Backwards-compatible facade (delegates to engine).
+- `src/engine/gameEngine.ts`: Main game loop / orchestrator (Day/Night cycles).
+- `src/phases/*`: Phase implementations (night, day discussion, day voting).
+- `src/actions/*`: Action intent + resolver (deterministic night resolution).
+- `src/roleModules/*`: Per-role action collectors (modular role behavior).
 - `src/agent.ts`: Wrapper around `generateText` for player actions.
+- `src/agentIo.ts`: Hardened agent I/O (timeouts/retries/fallbacks).
 - `src/logger.ts`: Centralized structured logging.
+- `src/events/*`: Minimal event bus used by logger/UI.
 
 ## Setup (AI Gateway)
 - **Environment**: create a `.env` file in the repo root with:
@@ -28,6 +34,12 @@
 Use dry-run to exercise the full game loop **without running any agents** (no API keys required).
 
 - `pnpm start:dry-run`
+
+## Tests
+- `pnpm test`
+
+## Config notes
+- `player_order_seed` (optional): controls initial player turn order shuffling (useful for deterministic runs).
 
 
 ## Repo Documentation Rule

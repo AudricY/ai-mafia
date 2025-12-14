@@ -18,6 +18,16 @@ function mulberry32(seed: number): () => number {
   };
 }
 
+function shuffleInPlace<T>(arr: T[], rng: () => number): void {
+  // Fisher–Yates shuffle (deterministic given `rng`).
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    const tmp = arr[i];
+    arr[i] = arr[j]!;
+    arr[j] = tmp!;
+  }
+}
+
 export class GameEngine {
   readonly config: GameConfig;
   readonly agents: Record<string, Agent>;
@@ -42,8 +52,18 @@ export class GameEngine {
     // Pass known players to logger for highlighting
     logger.setKnownPlayers(config.players.map(p => p.name));
 
+    // Randomize the initial player ordering once, so turn order isn't always the
+    // same as the config file. Use a stable seed in dry-run / role-seeded games.
+    const playerOrderSeed =
+      this.config.player_order_seed ??
+      (process.env.AI_MAFIA_DRY_RUN_SEED ? Number(process.env.AI_MAFIA_DRY_RUN_SEED) : undefined) ??
+      (this.config.role_seed !== undefined ? this.config.role_seed + 1 : Date.now());
+    const playerOrderRng = mulberry32(Number.isFinite(playerOrderSeed) ? playerOrderSeed : Date.now());
+    const initialPlayerConfigs = [...config.players];
+    shuffleInPlace(initialPlayerConfigs, playerOrderRng);
+
     // Initialize players and agents
-    config.players.forEach(p => {
+    initialPlayerConfigs.forEach(p => {
       this.agents[p.name] = new Agent(p, {
         gameRules: config.system_prompt,
         memory: {

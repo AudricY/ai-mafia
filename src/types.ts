@@ -32,6 +32,9 @@ export const GameConfigSchema = z.object({
   role_pool: z.array(RoleSchema).optional(),
   role_counts: z.record(RoleSchema, z.number().int().nonnegative()).optional(),
   role_seed: z.number().int().optional(),
+  // Seed for the initial player turn order (optional). If omitted, a best-effort
+  // seed is chosen (dry-run seed if present, otherwise time-based).
+  player_order_seed: z.number().int().optional(),
   memory_window_size: z.number().int().positive().default(20),
   memory_summary_max_chars: z.number().int().positive().default(1200),
   enable_faction_memory: z.boolean().default(true),
