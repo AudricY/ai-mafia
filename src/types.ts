@@ -10,6 +10,14 @@ export const RoleSchema = z.enum([
   'vigilante',
   'roleblocker',
   'godfather',
+  'tracker',
+  'jailkeeper',
+  'mason',
+  'bomb',
+  'mafia_roleblocker',
+  'framer',
+  'janitor',
+  'forger',
 ]);
 export type Role = z.infer<typeof RoleSchema>;
 

@@ -58,6 +58,62 @@ export const ROLE_DEFINITIONS: Record<Role, RoleDefinition> = {
     abilities: ['Night: coordinate with Mafia and perform the kill action.'],
     notes: ['Investigation immunity: Cop sees INNOCENT.'],
   },
+  tracker: {
+    role: 'tracker',
+    team: 'town',
+    summary: 'Tracks one player each night to learn who they visited (if anyone).',
+    abilities: ['Night: choose one living player to track (not yourself).'],
+    notes: ['Sees only successful visits. If the tracked player was blocked or did nothing, result is "no visit".'],
+  },
+  jailkeeper: {
+    role: 'jailkeeper',
+    team: 'town',
+    summary: 'Jails one player each night, protecting and blocking them.',
+    abilities: ['Night: choose one living player to jail (not yourself).'],
+    notes: ['Jailed players are both protected from kills and blocked from performing actions.'],
+  },
+  mason: {
+    role: 'mason',
+    team: 'town',
+    summary: 'Knows the identity of other Mason(s) at game start.',
+    abilities: ['No night action.'],
+    notes: ['Masons know each other are town-aligned.'],
+  },
+  bomb: {
+    role: 'bomb',
+    team: 'town',
+    summary: 'If killed at night, the killer also dies.',
+    abilities: ['No night action.'],
+    notes: ['Passive ability: retaliates against night killers.'],
+  },
+  mafia_roleblocker: {
+    role: 'mafia_roleblocker',
+    team: 'mafia',
+    summary: 'Mafia member who can block one player each night.',
+    abilities: ['Night: choose one player to block (not yourself).'],
+    notes: ['Works with Mafia team. Blocking can prevent investigations, saves, and other night actions.'],
+  },
+  framer: {
+    role: 'framer',
+    team: 'mafia',
+    summary: 'Frames one player each night to appear MAFIA to the Cop.',
+    abilities: ['Night: choose one living player to frame (not yourself).'],
+    notes: ['Framed players appear MAFIA to Cop investigations that night only.'],
+  },
+  janitor: {
+    role: 'janitor',
+    team: 'mafia',
+    summary: 'Can hide the role reveal of a Mafia kill victim.',
+    abilities: ['Night: choose to clean a Mafia kill (if one occurs).'],
+    notes: ['If used, the victim\'s role is not revealed publicly (shows as "unknown").'],
+  },
+  forger: {
+    role: 'forger',
+    team: 'mafia',
+    summary: 'Can forge a fake role reveal for a Mafia kill victim.',
+    abilities: ['Night: choose a fake role to reveal if a Mafia kill occurs.'],
+    notes: ['If used, the victim\'s role reveal shows the forged role instead of their real role.'],
+  },
 };
 
 export function formatRoleSetupForPrompt(roleCounts: Partial<Record<Role, number>>): string {
@@ -80,7 +136,7 @@ export function formatRoleSetupForPrompt(roleCounts: Partial<Record<Role, number
     ...lines,
     '',
     'Win conditions:',
-    "- Town: eliminate all Mafia (mafia + godfather).",
+    "- Town: eliminate all Mafia (mafia, godfather, mafia_roleblocker, framer, janitor, forger).",
     '- Mafia: equal or outnumber the Town.',
   ].join('\n');
 }

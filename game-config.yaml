@@ -30,11 +30,15 @@ players:
   - name: "Grace"
     model: "deepseek/deepseek-v3.2"
 
+  - name: "Henry"
+    model: "deepseek/deepseek-v3.2"
+
 roles:
   Alice: godfather
-  Bob: mafia
+  Bob: mafia_roleblocker
   Charlie: cop
   Dave: doctor
   Eve: vigilante
   Frank: roleblocker
-  Grace: villager
+  Grace: tracker
+  Henry: villager

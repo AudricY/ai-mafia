@@ -1,0 +1,89 @@
+import type { GameEngine } from '../engine/gameEngine.js';
+import type { NightActionIntent } from '../actions/types.js';
+import { logger } from '../logger.js';
+
+export async function collectFramerActions(
+  engine: GameEngine
+): Promise<Array<Extract<NightActionIntent, { kind: 'frame' }>>> {
+  const alivePlayers = engine.getAlivePlayers();
+  const aliveNames = alivePlayers.map(p => p.config.name);
+
+  const framers = alivePlayers.filter(p => p.role === 'framer');
+  const actions: Array<Extract<NightActionIntent, { kind: 'frame' }>> = [];
+
+  // Framers coordinate with the mafia team
+  const mafiaTeam = alivePlayers.filter(
+    p =>
+      p.role === 'mafia' ||
+      p.role === 'godfather' ||
+      p.role === 'mafia_roleblocker' ||
+      p.role === 'framer'
+  );
+
+  if (mafiaTeam.length > 1) {
+    logger.log({
+      type: 'SYSTEM',
+      content: `Mafia team (including framer) is discussing framing strategy...`,
+      metadata: { faction: 'mafia', visibility: 'faction' },
+    });
+    const discussionRounds = 1;
+    for (let r = 0; r < discussionRounds; r++) {
+      for (const member of mafiaTeam) {
+        const others = mafiaTeam.filter(m => m !== member).map(m => m.config.name).join(', ');
+        const context = `Night ${engine.state.round} Mafia Discussion (Round ${r + 1}/${discussionRounds}).
+Teammates: ${others}.
+Goal: Discuss who to frame tonight. Coordinate with your team.
+Alive players: ${aliveNames.join(', ')}.`;
+
+        const message = await engine.agentIO.respond(member.config.name, context, []);
+
+        const formattedMsg = `${member.config.name}: ${message}`;
+        mafiaTeam.forEach(m => {
+          engine.agents[m.config.name]?.observeFactionEvent(formattedMsg);
+        });
+
+        logger.log({
+          type: 'FACTION_CHAT',
+          player: member.config.name,
+          content: message,
+          metadata: { role: member.role, faction: 'mafia', visibility: 'faction' },
+        });
+      }
+    }
+  }
+
+  for (const framer of framers) {
+    const validTargets = aliveNames.filter(n => n !== framer.config.name);
+    if (validTargets.length === 0) continue;
+
+    const target = await engine.agentIO.decide(
+      framer.config.name,
+      `Night ${engine.state.round}. You are the Framer.
+Alive players: ${aliveNames.join(', ')}.
+
+Choose ONE player to frame tonight.
+Guidance (soft):
+- Frame players likely to be investigated by the Cop (suspected town power roles, or yourself/teammates to confuse).
+- Framed players will appear MAFIA to Cop investigations this night only.
+- Coordinate with your mafia team.`,
+      validTargets
+    );
+
+    actions.push({ kind: 'frame', actor: framer.config.name, target });
+
+    mafiaTeam.forEach(m => {
+      engine.agents[m.config.name]?.observeFactionEvent(
+        `Our framer (${framer.config.name}) chose to frame ${target}.`
+      );
+    });
+
+    logger.log({
+      type: 'ACTION',
+      player: framer.config.name,
+      content: `chose to frame ${target}`,
+      metadata: { target, role: 'framer', faction: 'mafia', visibility: 'faction' },
+    });
+  }
+
+  return actions;
+}

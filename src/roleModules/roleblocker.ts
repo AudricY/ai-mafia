@@ -22,7 +22,8 @@ Choose ONE player to block from performing an action tonight.
 Guidance (soft):
 - Prefer blocking someone you suspect is mafia or someone whose night action would be dangerous if they are mafia.
 - Use public behavior (pushy framing, coordinated narratives, strange vote positioning) to pick a target.
-- Avoid purely random blocks unless you have no read.`,
+- Avoid purely random blocks unless you have no read.
+- Note: Your block can be blocked by a Jailkeeper or higher-priority blocker.`,
       validTargets
     );
 

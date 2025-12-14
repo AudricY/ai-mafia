@@ -3,13 +3,20 @@ import type { NightActionIntent } from '../actions/types.js';
 import { logger } from '../logger.js';
 
 export async function collectMafiaActions(
-  engine: GameEngine,
-  blockedPlayers: Set<string>
+  engine: GameEngine
 ): Promise<Array<Extract<NightActionIntent, { kind: 'kill'; source: 'mafia' }>>> {
   const alivePlayers = engine.getAlivePlayers();
   const aliveNames = alivePlayers.map(p => p.config.name);
 
-  const mafiaTeam = alivePlayers.filter(p => p.role === 'mafia' || p.role === 'godfather');
+  const mafiaTeam = alivePlayers.filter(
+    p =>
+      p.role === 'mafia' ||
+      p.role === 'godfather' ||
+      p.role === 'mafia_roleblocker' ||
+      p.role === 'framer' ||
+      p.role === 'janitor' ||
+      p.role === 'forger'
+  );
   if (mafiaTeam.length === 0) return [];
 
   // --- Mafia Discussion ---
@@ -48,25 +55,33 @@ Alive players: ${aliveNames.join(', ')}.`;
     }
   }
 
-  // Find shooter (Godfather priority)
-  const shooter = mafiaTeam.find(p => p.role === 'godfather') || mafiaTeam[0]!;
-
-  if (blockedPlayers.has(shooter.config.name)) {
-    engine.agents[shooter.config.name]?.observePrivateEvent(
-      `You were roleblocked and could not perform the kill!`
-    );
-    return [];
-  }
+  // Find shooter (Godfather priority, then mafia, then other mafia roles)
+  // Backup shooter logic: if default shooter is blocked, another mafia member can perform the kill
+  // For now, we'll select the shooter and let the resolver handle blocking
+  // The resolver will need to check if the shooter is blocked and potentially use a backup
+  // But actually, we can't know who's blocked until resolution, so we'll just pick the primary shooter
+  // The backup shooter behavior will be handled in the resolver or night phase
+  const shooter = mafiaTeam.find(p => p.role === 'godfather') ||
+    mafiaTeam.find(p => p.role === 'mafia') ||
+    mafiaTeam[0]!;
 
   const validTargets = aliveNames.filter(n => {
     const role = engine.state.players[n]?.role;
-    return role !== 'mafia' && role !== 'godfather';
+    return (
+      role !== 'mafia' &&
+      role !== 'godfather' &&
+      role !== 'mafia_roleblocker' &&
+      role !== 'framer' &&
+      role !== 'janitor' &&
+      role !== 'forger'
+    );
   });
   if (validTargets.length === 0) return [];
 
   const target = await engine.agentIO.decide(
     shooter.config.name,
-    `Night ${engine.state.round}. You are leading the Mafia kill. Choose a target.`,
+    `Night ${engine.state.round}. You are leading the Mafia kill. Choose a target.
+Note: If you are blocked, another mafia member may perform the kill instead.`,
     validTargets
   );
 

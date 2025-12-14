@@ -143,21 +143,39 @@ export class GameEngine {
     return entries.map(([k, v]) => `${k}: ${v}`).join(', ');
   }
 
-  killPlayer(name: string) {
+  killPlayer(name: string, revealedRole?: string | null) {
     if (this.state.players[name]) {
       this.state.players[name].isAlive = false;
-      this.recordPublic({
-        type: 'DEATH',
-        player: name,
-        content: `has died. Their role was ${this.state.players[name].role}.`,
-        metadata: { role: this.state.players[name].role },
-      });
+      const roleToReveal = revealedRole !== undefined ? revealedRole : this.state.players[name].role;
+      if (roleToReveal === null) {
+        this.recordPublic({
+          type: 'DEATH',
+          player: name,
+          content: `has died. Their role is unknown.`,
+          metadata: { role: null },
+        });
+      } else {
+        this.recordPublic({
+          type: 'DEATH',
+          player: name,
+          content: `has died. Their role was ${roleToReveal}.`,
+          metadata: { role: roleToReveal },
+        });
+      }
     }
   }
 
   checkWin(): boolean {
     const alive = this.getAlivePlayers();
-    const mafiaCount = alive.filter(p => p.role === 'mafia' || p.role === 'godfather').length;
+    const mafiaCount = alive.filter(
+      p =>
+        p.role === 'mafia' ||
+        p.role === 'godfather' ||
+        p.role === 'mafia_roleblocker' ||
+        p.role === 'framer' ||
+        p.role === 'janitor' ||
+        p.role === 'forger'
+    ).length;
     const villagerCount = alive.length - mafiaCount;
 
     if (mafiaCount === 0) {
@@ -353,7 +371,14 @@ export class GameEngine {
     // Log roles (system only) + initialize agent-private knowledge.
     Object.values(this.state.players).forEach(p => {
       this.agents[p.config.name]?.setRole(p.role);
-      this.agents[p.config.name]?.setFactionMemory(['mafia', 'godfather'].includes(p.role) ? this.mafiaMemory : undefined);
+      const isMafiaRole =
+        p.role === 'mafia' ||
+        p.role === 'godfather' ||
+        p.role === 'mafia_roleblocker' ||
+        p.role === 'framer' ||
+        p.role === 'janitor' ||
+        p.role === 'forger';
+      this.agents[p.config.name]?.setFactionMemory(isMafiaRole ? this.mafiaMemory : undefined);
       logger.setPlayerRole(p.config.name, p.role);
       logger.log({
         type: 'SYSTEM',
@@ -362,6 +387,18 @@ export class GameEngine {
       });
       this.agents[p.config.name]?.observePrivateEvent(`Your role is ${p.role}.`);
     });
+
+    // Handle Masons: they know each other
+    const masons = Object.values(this.state.players).filter(p => p.role === 'mason');
+    if (masons.length > 1) {
+      const masonNames = masons.map(m => m.config.name);
+      masons.forEach(mason => {
+        const otherMasons = masonNames.filter(n => n !== mason.config.name);
+        this.agents[mason.config.name]?.observePrivateEvent(
+          `You are a Mason. The other Mason(s) are: ${otherMasons.join(', ')}. You know they are town-aligned.`
+        );
+      });
+    }
 
     this.roleCounts = this.computeRoleCountsFromState();
     this.roleSetupPublicText = formatRoleSetupForPublicLog(this.roleCounts);
