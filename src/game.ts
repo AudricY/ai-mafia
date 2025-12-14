@@ -357,31 +357,67 @@ Alive players: ${aliveNames.join(', ')}.`;
   private async dayPhase() {
     this.recordPublic({ type: 'SYSTEM', content: `--- Day ${this.state.round} Discussion ---` });
     
-    // Configurable rounds of discussion
-    const discussionRounds = this.config.rounds || 3;
+    // Dynamic message limit: 10 + 5 per round.
+    // e.g. Day 1 = 15, Day 2 = 20...
+    const maxMessages = 10 + (this.state.round * 5);
+    let messagesSent = 0;
     
-    for (let r = 0; r < discussionRounds; r++) {
-       const alivePlayers = Object.values(this.state.players).filter(p => p.isAlive);
-       // Round robin
-       for (const player of alivePlayers) {
-         const name = player.config.name;
-         const context = `
-Current Phase: Day ${this.state.round}, Discussion Round ${r + 1}.
+    const alivePlayers = Object.values(this.state.players).filter(p => p.isAlive);
+    const aliveCount = alivePlayers.length;
+    let consecutiveSkips = 0;
+
+    logger.log({ type: 'SYSTEM', content: `Discussion started. Max messages: ${maxMessages}.` });
+
+    // Round-robin iteration until termination condition
+    // We iterate endlessly over the list until break
+    let turnIndex = 0;
+    
+    while (messagesSent < maxMessages && consecutiveSkips < aliveCount) {
+        // Round robin pick
+        const player = alivePlayers[turnIndex % aliveCount];
+        turnIndex++;
+
+        const name = player.config.name;
+        const context = `
+Current Phase: Day ${this.state.round}, Discussion.
 This is your public speaking turn. Speak as ${name}.
 Goal: Convince others, find mafia (or hide if you are mafia).
 Alive players: ${alivePlayers.map(p => p.config.name).join(', ')}.
-         `.trim();
+Status: ${messagesSent}/${maxMessages} messages used.
 
-         const message = await this.agents[name].generateResponse(context, []);
-         
-         const entry = {
-           type: 'CHAT' as const,
-           player: name,
-           content: message
-         };
-         
-         this.recordPublic(entry);
-       }
+Instruction:
+- If you have something to say, say it.
+- If you have nothing new to add, reply with the single word "SKIP".
+- The discussion ends if everyone skips effectively.
+        `.trim();
+
+        const message = await this.agents[name].generateResponse(context, []);
+        
+        // Check for SKIP
+        const isSkip = message.trim().toUpperCase() === 'SKIP';
+
+        if (isSkip) {
+            consecutiveSkips++;
+            // Optionally log a quiet thought or system debug
+            this.agents[name]?.observePrivateEvent('You chose to SKIP this turn.');
+        } else {
+             consecutiveSkips = 0; // Reset on valid message
+             messagesSent++;
+             
+             const entry = {
+                type: 'CHAT' as const,
+                player: name,
+                content: message
+             };
+             
+             this.recordPublic(entry);
+        }
+    }
+    
+    if (consecutiveSkips >= aliveCount) {
+       this.recordPublic({ type: 'SYSTEM', content: 'Discussion ended (silence settled over the town).' });
+    } else {
+       this.recordPublic({ type: 'SYSTEM', content: 'Discussion ended (time limit reached).' });
     }
   }
 
