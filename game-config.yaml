@@ -4,21 +4,20 @@ system_prompt: |
   Your goal is to survive and eliminate the opposing team.
   Be persuasive, deceptive if necessary, and observant.
 
+log_thoughts: true
+
 players:
   - name: "Alice"
     model: "deepseek/deepseek-v3.2"
     temperature: 0.8
-    systemPrompt: "You are loud and accuse people quickly."
 
   - name: "Bob"
     model: "deepseek/deepseek-v3.2"
     temperature: 0.6
-    systemPrompt: "You are analytical and quiet."
 
   - name: "Charlie"
     model: "deepseek/deepseek-v3.2"
     temperature: 0.9
-    systemPrompt: "You are chaotic and tell jokes."
 
   - name: "Dave"
     model: "deepseek/deepseek-v3.2"

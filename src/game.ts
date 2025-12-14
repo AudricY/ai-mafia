@@ -22,6 +22,7 @@ export class Game {
           publicWindowSize: config.memory_window_size,
           summaryMaxChars: config.memory_summary_max_chars,
         },
+        logThoughts: config.log_thoughts,
       });
       players[p.name] = {
         config: p,

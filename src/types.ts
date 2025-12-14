@@ -22,6 +22,7 @@ export const GameConfigSchema = z.object({
   memory_window_size: z.number().int().positive().default(20),
   memory_summary_max_chars: z.number().int().positive().default(1200),
   enable_faction_memory: z.boolean().default(true),
+  log_thoughts: z.boolean().default(false),
   // If roles are not explicitly assigned, the game engine will randomize them based on player count
 });
 export type GameConfig = z.infer<typeof GameConfigSchema>;
@@ -48,7 +49,7 @@ export interface GameState {
 
 // --- Logging Types ---
 
-export type LogType = 'SYSTEM' | 'CHAT' | 'ACTION' | 'VOTE' | 'DEATH' | 'WIN';
+export type LogType = 'SYSTEM' | 'CHAT' | 'ACTION' | 'VOTE' | 'DEATH' | 'WIN' | 'THOUGHT';
 
 export interface GameLogEntry {
   id: string;

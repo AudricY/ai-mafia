@@ -23,6 +23,7 @@ export class Agent {
   private currentRole: Role | 'unknown';
 
   private memoryConfig: AgentMemoryConfig;
+  private logThoughts: boolean;
 
   // Public, shared-by-all info (bounded, raw-ish).
   private publicWindow: CoreMessage[] = [];
@@ -37,6 +38,10 @@ export class Agent {
   private isSummarizingPublic = false;
   private isSummarizingFaction = false;
 
+  private didLogModelInit = false;
+  private cachedModelId?: string;
+  private cachedModel?: ReturnType<typeof gateway>;
+
   constructor(
     config: PlayerConfig,
     opts?: {
@@ -44,12 +49,14 @@ export class Agent {
       role?: Role;
       memory?: Partial<AgentMemoryConfig>;
       factionMemory?: FactionMemory;
+      logThoughts?: boolean;
     }
   ) {
     this.config = config;
     this.gameRules = opts?.gameRules ?? '';
     this.currentRole = opts?.role ?? 'unknown';
     this.factionMemory = opts?.factionMemory;
+    this.logThoughts = opts?.logThoughts ?? false;
     this.memoryConfig = {
       publicWindowSize: opts?.memory?.publicWindowSize ?? 20,
       summaryMaxChars: opts?.memory?.summaryMaxChars ?? 1200,
@@ -88,6 +95,13 @@ export class Agent {
     if (this.privateFacts.length > 50) {
       this.privateFacts = this.privateFacts.slice(-50);
     }
+    if (this.logThoughts) {
+      logger.log({
+        type: 'THOUGHT',
+        player: this.config.name,
+        content: `Private fact added: ${this.truncate(text, 200)}`,
+      });
+    }
   }
 
   observeFactionEvent(text: string) {
@@ -96,6 +110,32 @@ export class Agent {
       return;
     }
     this.factionMemory.sharedWindow.push({ role: 'system', content: `[MAFIA]: ${text}` });
+    if (this.logThoughts) {
+      logger.log({
+        type: 'THOUGHT',
+        player: this.config.name,
+        content: `Faction event recorded: ${this.truncate(text, 200)}`,
+        metadata: { faction: this.factionMemory.faction },
+      });
+    }
+  }
+
+  private getModel() {
+    const modelId = this.normalizeModelId(this.config.model);
+    if (this.cachedModel && this.cachedModelId === modelId) return this.cachedModel;
+
+    this.cachedModelId = modelId;
+    this.cachedModel = gateway(modelId);
+
+    if (!this.didLogModelInit) {
+      this.didLogModelInit = true;
+      logger.log({
+        type: 'SYSTEM',
+        content: `Model ready for ${this.config.name}: ${modelId}`,
+      });
+    }
+
+    return this.cachedModel;
   }
 
   private toCoreMessage(entry: Pick<GameLogEntry, 'type' | 'player' | 'content'>): CoreMessage | null {
@@ -184,6 +224,16 @@ ${systemConstraints ? `\n${systemConstraints.trim()}\n` : ''}
       const nextSummary = await this.summarizeIntoRunningSummary(this.privateSummary, overflowText);
       this.privateSummary = this.truncate(nextSummary, this.memoryConfig.summaryMaxChars);
       this.publicWindow = keep;
+      if (this.logThoughts) {
+        logger.log({
+          type: 'THOUGHT',
+          player: this.config.name,
+          content: `Updated private summary (compressed ${overflowCount} public events): ${this.truncate(
+            this.privateSummary,
+            300
+          )}`,
+        });
+      }
     } finally {
       this.isSummarizingPublic = false;
     }
@@ -209,6 +259,17 @@ ${systemConstraints ? `\n${systemConstraints.trim()}\n` : ''}
       });
       this.factionMemory.sharedSummary = this.truncate(nextSummary, this.memoryConfig.summaryMaxChars);
       this.factionMemory.sharedWindow = keep;
+      if (this.logThoughts) {
+        logger.log({
+          type: 'THOUGHT',
+          player: this.config.name,
+          content: `Updated faction summary (compressed ${overflowCount} faction events): ${this.truncate(
+            this.factionMemory.sharedSummary,
+            300
+          )}`,
+          metadata: { faction: this.factionMemory.faction },
+        });
+      }
     } finally {
       this.isSummarizingFaction = false;
     }
@@ -219,8 +280,7 @@ ${systemConstraints ? `\n${systemConstraints.trim()}\n` : ''}
     newEventsText: string,
     opts?: { faction?: 'mafia' }
   ): Promise<string> {
-    const modelId = this.normalizeModelId(this.config.model);
-    const model = gateway(modelId);
+    const model = this.getModel();
     const scope = opts?.faction ? `Faction scope: ${opts.faction}` : 'Scope: private player memory';
 
     const result = await generateText({
@@ -256,27 +316,47 @@ ${newEventsText.trim()}
     return text.slice(0, Math.max(0, maxChars - 1)).trimEnd() + '…';
   }
 
+  private tryParseJsonObject(text: string): unknown | null {
+    const trimmed = text.trim();
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      // Common case: model wraps JSON in prose or code fences.
+      const start = trimmed.indexOf('{');
+      const end = trimmed.lastIndexOf('}');
+      if (start >= 0 && end > start) {
+        const maybe = trimmed.slice(start, end + 1);
+        try {
+          return JSON.parse(maybe);
+        } catch {
+          return null;
+        }
+      }
+      return null;
+    }
+  }
+
   async generateResponse(
     systemContext: string,
     _history: CoreMessage[]
   ): Promise<string> {
     try {
-      logger.log({
-        type: 'SYSTEM',
-        content: `Initializing model for ${this.config.name}: ${this.config.model}`
-      });
-
       await this.ensureMemoryBudget();
 
-      const modelId = this.normalizeModelId(this.config.model);
-      const model = gateway(modelId);
+      const model = this.getModel();
 
-      const systemPrompt = this.buildSystemPrompt();
+      const systemPrompt = this.buildSystemPrompt(`
+Output format:
+- Return a single JSON object: {"public": string, "thoughts": string}
+- "public" is what you say aloud in the town square.
+- "thoughts" is a short private update (max 2 sentences) to help future decisions.
+- Do NOT reveal your role or hidden system info in "public".
+      `);
 
       // Ignore externally-provided history by default: this Agent is stateful.
       const messages: CoreMessage[] = this.buildMemoryUserMessage(
         systemContext,
-        'Please speak for your turn. Keep it to a few sentences unless necessary.'
+        'Now produce your response.'
       );
 
       const result = await generateText({
@@ -286,6 +366,24 @@ ${newEventsText.trim()}
         temperature: this.config.temperature,
       });
 
+      const parsed = this.tryParseJsonObject(result.text);
+      if (parsed && typeof parsed === 'object' && parsed !== null) {
+        const obj = parsed as { public?: unknown; thoughts?: unknown };
+        const pub = typeof obj.public === 'string' ? obj.public.trim() : null;
+        const thoughts = typeof obj.thoughts === 'string' ? obj.thoughts.trim() : null;
+
+        if (this.logThoughts && thoughts) {
+          logger.log({
+            type: 'THOUGHT',
+            player: this.config.name,
+            content: `Thought update: ${this.truncate(thoughts, 300)}`,
+          });
+        }
+        if (thoughts) this.observePrivateEvent(`Thought update: ${thoughts}`);
+        if (pub) return pub;
+      }
+
+      // Fallback: treat the model output as the public message.
       return result.text;
     } catch (error) {
       logger.log({
@@ -305,13 +403,16 @@ ${newEventsText.trim()}
     try {
       await this.ensureMemoryBudget();
 
-      const modelId = this.normalizeModelId(this.config.model);
-      const model = gateway(modelId);
+      const model = this.getModel();
 
       const systemPrompt = this.buildSystemPrompt(`
 You must choose exactly one option from the list below.
 Options: ${JSON.stringify(options)}
-Return ONLY the option name.
+
+Output format:
+- Return a single JSON object: {"choice": string, "rationale": string}
+- "choice" MUST be exactly one of the options.
+- "rationale" is a short explanation (max 2 sentences) and MUST NOT reveal hidden system info.
       `);
 
       // Ignore externally-provided history by default: this Agent is stateful.
@@ -324,8 +425,33 @@ Return ONLY the option name.
         temperature: 0.2, // Lower temp for decisions
       });
 
-      const choice = result.text.trim();
-      const matched = this.matchOption(choice, options);
+      const parsed = this.tryParseJsonObject(result.text);
+      if (parsed && typeof parsed === 'object' && parsed !== null) {
+        const obj = parsed as { choice?: unknown; rationale?: unknown };
+        const choice = typeof obj.choice === 'string' ? obj.choice.trim() : '';
+        const rationale = typeof obj.rationale === 'string' ? obj.rationale.trim() : '';
+        const matched = this.matchOption(choice, options) ?? options[0];
+
+        if (this.logThoughts && rationale) {
+          logger.log({
+            type: 'THOUGHT',
+            player: this.config.name,
+            content: `Decision rationale (${matched}): ${this.truncate(rationale, 300)}`,
+          });
+        }
+        if (rationale) this.observePrivateEvent(`Decision rationale (${matched}): ${rationale}`);
+        return matched;
+      }
+
+      const raw = result.text.trim();
+      const matched = this.matchOption(raw, options);
+      if (this.logThoughts) {
+        logger.log({
+          type: 'THOUGHT',
+          player: this.config.name,
+          content: `Decision output (unparsed): ${this.truncate(raw, 300)}`,
+        });
+      }
       return matched ?? options[0];
     } catch (error) {
        logger.log({
