@@ -55,5 +55,6 @@ export interface ResolvedNightActions {
 export interface NightResolutionInput {
   actions: NightActionIntent[];
   rolesByPlayer: Record<string, Role>;
+  alivePlayers: string[];
 }
 

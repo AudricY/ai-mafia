@@ -99,8 +99,19 @@ export function resolveNightActions(input: NightResolutionInput): ResolvedNightA
     appliedBlocks.add(block.actor);
   }
 
+  // 1b) Compute effective actions (apply mafia backup shooter BEFORE any visit-sensitive resolution).
+  // If the mafia kill leader is blocked, another alive, unblocked mafia-aligned player may perform the kill.
+  const aliveMafiaTeam = input.alivePlayers.filter(p => isMafiaRole(input.rolesByPlayer[p]));
+  const actionsForResolution: NightActionIntent[] = input.actions.map(a => {
+    if (a.kind !== 'kill' || a.source !== 'mafia') return a;
+    if (!blockedPlayers.has(a.actor)) return a;
+    const backupShooter = aliveMafiaTeam.find(p => p !== a.actor && !blockedPlayers.has(p));
+    if (!backupShooter) return a;
+    return { ...a, actor: backupShooter };
+  });
+
   // 2) Apply saves (blocked doctors don't save)
-  for (const a of input.actions) {
+  for (const a of actionsForResolution) {
     if (a.kind !== 'save') continue;
     if (blockedPlayers.has(a.actor)) continue;
     savedPlayers.add(a.target);
@@ -114,7 +125,7 @@ export function resolveNightActions(input: NightResolutionInput): ResolvedNightA
   }
 
   // 4) Resolve investigations (blocked cops don't investigate)
-  for (const a of input.actions) {
+  for (const a of actionsForResolution) {
     if (a.kind !== 'investigate') continue;
     if (blockedPlayers.has(a.actor)) continue;
     const targetRole = input.rolesByPlayer[a.target];
@@ -124,7 +135,7 @@ export function resolveNightActions(input: NightResolutionInput): ResolvedNightA
   }
 
   // 5) Resolve kills (blocked shooters don't kill; saved targets don't die)
-  for (const a of input.actions) {
+  for (const a of actionsForResolution) {
     if (a.kind !== 'kill') continue;
     const blocked = blockedPlayers.has(a.actor);
     const saved = !blocked && savedPlayers.has(a.target);
@@ -168,7 +179,7 @@ export function resolveNightActions(input: NightResolutionInput): ResolvedNightA
 
     // Check if tracked player successfully performed any targeted action
     // Priority: first successful action counts
-    for (const a of input.actions) {
+    for (const a of actionsForResolution) {
       if (a.actor !== trackedPlayer) continue;
       if (blockedPlayers.has(trackedPlayer)) break; // If tracked player was blocked, no visit
 

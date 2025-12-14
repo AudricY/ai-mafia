@@ -7,28 +7,31 @@ log_thoughts: true
 
 players:
   - name: "Alice"
-    model: "deepseek/deepseek-v3.2"
+    model: "xai/grok-4.1-fast-reasoning"
     temperature: 0.8
 
   - name: "Bob"
-    model: "deepseek/deepseek-v3.2"
+    model: "xai/grok-4.1-fast-reasoning"
     temperature: 0.6
 
   - name: "Charlie"
-    model: "deepseek/deepseek-v3.2"
+    model: "xai/grok-4.1-fast-reasoning"
     temperature: 0.9
 
   - name: "Dave"
-    model: "deepseek/deepseek-v3.2"
+    model: "xai/grok-4.1-fast-reasoning"
     
   - name: "Eve"
-    model: "deepseek/deepseek-v3.2"
+    model: "xai/grok-4.1-fast-reasoning"
 
   - name: "Frank"
-    model: "deepseek/deepseek-v3.2"
+    model: "xai/grok-4.1-fast-reasoning"
 
   - name: "Grace"
-    model: "deepseek/deepseek-v3.2"
+    model: "xai/grok-4.1-fast-reasoning"
+  
+  - name: "Henry"
+    model: "xai/grok-4.1-fast-reasoning"
 
 roles:
   Alice: godfather
@@ -38,4 +41,5 @@ roles:
   Eve: vigilante
   Frank: roleblocker
   Grace: tracker
+  Henry: jailkeeper
 

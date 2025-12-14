@@ -20,7 +20,7 @@ export class NightPhase {
       Object.entries(engine.state.players).map(([name, ps]) => [name, ps.role])
     );
 
-    const resolved = resolveNightActions({ actions, rolesByPlayer });
+    const resolved = resolveNightActions({ actions, rolesByPlayer, alivePlayers: engine.getAliveNames() });
 
     // Deliver investigation results (private)
     for (const inv of resolved.investigations) {
@@ -39,7 +39,7 @@ export class NightPhase {
     for (const track of resolved.trackerResults) {
       const resultText =
         track.visited === null
-          ? `Tracking result (night ${engine.state.round}): ${track.target} did not visit anyone.`
+          ? `Tracking result (night ${engine.state.round}): ${track.target} did not make a successful visit (they may have stayed home or been blocked).`
           : `Tracking result (night ${engine.state.round}): ${track.target} visited ${track.visited}.`;
       engine.agents[track.actor]?.observePrivateEvent(resultText);
       logger.log({
@@ -79,76 +79,41 @@ export class NightPhase {
       }
     }
 
-    // Handle backup shooter for mafia kills
-    // If the primary shooter was blocked, try to find another mafia member to perform the kill
-    const mafiaKills = resolved.kills.filter(k => k.source === 'mafia');
-    if (mafiaKills.length > 0) {
-      const blockedKill = mafiaKills.find(k => k.blocked);
-      if (blockedKill) {
-        // Find another mafia member who is not blocked
-        const mafiaTeam = engine
-          .getAlivePlayers()
-          .filter(
-            p =>
-              (p.role === 'mafia' ||
-                p.role === 'godfather' ||
-                p.role === 'mafia_roleblocker' ||
-                p.role === 'framer' ||
-                p.role === 'janitor' ||
-                p.role === 'forger') &&
-              p.config.name !== blockedKill.actor &&
-              !resolved.blockedPlayers.has(p.config.name)
-          );
-        if (mafiaTeam.length > 0) {
-          // Backup shooter performs the kill
-          const backupShooter = mafiaTeam[0]!;
-          const target = blockedKill.target;
-          const wasSaved = resolved.savedPlayers.has(target);
-          
-          // Update the kill to use backup shooter
-          const killIndex = resolved.kills.findIndex(
-            k => k.actor === blockedKill.actor && k.target === blockedKill.target && k.source === 'mafia'
-          );
-          if (killIndex >= 0) {
-            resolved.kills[killIndex] = {
-              actor: backupShooter.config.name,
-              target,
-              source: 'mafia',
-              blocked: false,
-              saved: wasSaved,
-            };
-            
-            // Update deaths if not saved
-            if (!wasSaved && !resolved.deaths.has(target)) {
-              resolved.deaths.add(target);
-            }
-            
-            // Notify mafia team
-            const allMafia = engine
-              .getAlivePlayers()
-              .filter(
-                p =>
-                  p.role === 'mafia' ||
-                  p.role === 'godfather' ||
-                  p.role === 'mafia_roleblocker' ||
-                  p.role === 'framer' ||
-                  p.role === 'janitor' ||
-                  p.role === 'forger'
-              );
-            allMafia.forEach(m => {
-              engine.agents[m.config.name]?.observeFactionEvent(
-                `Primary shooter ${blockedKill.actor} was blocked. Backup shooter ${backupShooter.config.name} performed the kill on ${target}.`
-              );
-            });
-            logger.log({
-              type: 'ACTION',
-              player: backupShooter.config.name,
-              content: `performed backup kill on ${target} (primary shooter ${blockedKill.actor} was blocked)`,
-              metadata: { target, role: backupShooter.role, faction: 'mafia', visibility: 'faction' },
-            });
-          }
-        }
-      }
+    // If the mafia kill was performed by a different actor than the original kill leader,
+    // notify the mafia faction (for transparency).
+    const mafiaKillIntents = actions.filter(
+      a => a.kind === 'kill' && a.source === 'mafia'
+    );
+    for (const intent of mafiaKillIntents) {
+      const resolvedKill = resolved.kills.find(
+        k => k.source === 'mafia' && k.target === intent.target
+      );
+      if (!resolvedKill) continue;
+      if (resolvedKill.blocked) continue;
+      if (resolvedKill.actor === intent.actor) continue;
+
+      const allMafia = engine
+        .getAlivePlayers()
+        .filter(
+          p =>
+            p.role === 'mafia' ||
+            p.role === 'godfather' ||
+            p.role === 'mafia_roleblocker' ||
+            p.role === 'framer' ||
+            p.role === 'janitor' ||
+            p.role === 'forger'
+        );
+      allMafia.forEach(m => {
+        engine.agents[m.config.name]?.observeFactionEvent(
+          `Primary shooter ${intent.actor} was blocked. Backup shooter ${resolvedKill.actor} performed the kill on ${resolvedKill.target}.`
+        );
+      });
+      logger.log({
+        type: 'ACTION',
+        player: resolvedKill.actor,
+        content: `performed backup kill on ${resolvedKill.target} (primary shooter ${intent.actor} was blocked)`,
+        metadata: { target: resolvedKill.target, role: engine.state.players[resolvedKill.actor]?.role, faction: 'mafia', visibility: 'faction' },
+      });
     }
 
     // Publicly announce saved kill attempts.

@@ -18,7 +18,7 @@ test('resolveNightActions: roleblock prevents non-block actions', () => {
     { kind: 'kill', actor: 'Carol', target: 'Dave', source: 'mafia' },
   ];
 
-  const resolved = resolveNightActions({ actions, rolesByPlayer });
+  const resolved = resolveNightActions({ actions, rolesByPlayer, alivePlayers: Object.keys(rolesByPlayer) });
   assert.ok(resolved.blockedPlayers.has('Bob'));
   assert.ok(!resolved.savedPlayers.has('Dave'));
   assert.ok(resolved.deaths.has('Dave'));
@@ -38,7 +38,7 @@ test('resolveNightActions: doctor save prevents both mafia and vigilante kills',
     { kind: 'kill', actor: 'Vig', target: 'Town', source: 'vigilante' },
   ];
 
-  const resolved = resolveNightActions({ actions, rolesByPlayer });
+  const resolved = resolveNightActions({ actions, rolesByPlayer, alivePlayers: Object.keys(rolesByPlayer) });
   assert.ok(resolved.savedPlayers.has('Town'));
   assert.equal(resolved.deaths.size, 0);
   assert.equal(resolved.kills.filter(k => k.saved).length, 2);
@@ -58,7 +58,7 @@ test('resolveNightActions: cop sees mafia as MAFIA and godfather as INNOCENT', (
     { kind: 'investigate', actor: 'Cop', target: 'Town' },
   ];
 
-  const resolved = resolveNightActions({ actions, rolesByPlayer });
+  const resolved = resolveNightActions({ actions, rolesByPlayer, alivePlayers: Object.keys(rolesByPlayer) });
   const byTarget = new Map(resolved.investigations.map(r => [r.target, r.result] as const));
   assert.equal(byTarget.get('Maf'), 'MAFIA');
   assert.equal(byTarget.get('Gf'), 'INNOCENT');
@@ -73,7 +73,7 @@ test('resolveNightActions: prevents mafia-on-mafia deaths defensively', () => {
   };
 
   const actions: NightActionIntent[] = [{ kind: 'kill', actor: 'Maf2', target: 'Maf1', source: 'mafia' }];
-  const resolved = resolveNightActions({ actions, rolesByPlayer });
+  const resolved = resolveNightActions({ actions, rolesByPlayer, alivePlayers: Object.keys(rolesByPlayer) });
   assert.equal(resolved.deaths.size, 0);
 });
 
@@ -96,7 +96,7 @@ test('resolveNightActions: blockable blocks with priority', () => {
     { kind: 'save', actor: 'Doc', target: 'Town' },
   ];
 
-  const resolved = resolveNightActions({ actions, rolesByPlayer });
+  const resolved = resolveNightActions({ actions, rolesByPlayer, alivePlayers: Object.keys(rolesByPlayer) });
   assert.ok(resolved.blockedPlayers.has('Rb')); // Roleblocker is jailed
   assert.ok(resolved.blockedPlayers.has('Doc')); // Doctor is blocked by mafia_roleblocker
   assert.ok(!resolved.blockedPlayers.has('MafRb')); // Mafia roleblocker is NOT blocked (roleblocker was blocked)
@@ -120,7 +120,7 @@ test('resolveNightActions: tracker sees successful visits only', () => {
     { kind: 'investigate', actor: 'Cop', target: 'Town' },
   ];
 
-  const resolved = resolveNightActions({ actions, rolesByPlayer });
+  const resolved = resolveNightActions({ actions, rolesByPlayer, alivePlayers: Object.keys(rolesByPlayer) });
   const trackerResult = resolved.trackerResults.find(r => r.actor === 'Tracker');
   assert.ok(trackerResult);
   assert.equal(trackerResult?.visited, null); // No visit because Cop was blocked
@@ -140,7 +140,7 @@ test('resolveNightActions: tracker sees successful visit', () => {
     { kind: 'save', actor: 'Doc', target: 'Town' },
   ];
 
-  const resolved = resolveNightActions({ actions, rolesByPlayer });
+  const resolved = resolveNightActions({ actions, rolesByPlayer, alivePlayers: Object.keys(rolesByPlayer) });
   const trackerResult = resolved.trackerResults.find(r => r.actor === 'Tracker');
   assert.ok(trackerResult);
   assert.equal(trackerResult?.visited, 'Town');
@@ -160,7 +160,7 @@ test('resolveNightActions: framer makes target appear MAFIA', () => {
     { kind: 'investigate', actor: 'Cop', target: 'Town' },
   ];
 
-  const resolved = resolveNightActions({ actions, rolesByPlayer });
+  const resolved = resolveNightActions({ actions, rolesByPlayer, alivePlayers: Object.keys(rolesByPlayer) });
   const inv = resolved.investigations.find(i => i.target === 'Town');
   assert.ok(inv);
   assert.equal(inv?.result, 'MAFIA');
@@ -179,7 +179,7 @@ test('resolveNightActions: bomb retaliation kills attacker', () => {
     { kind: 'kill', actor: 'Maf', target: 'Bomb', source: 'mafia' },
   ];
 
-  const resolved = resolveNightActions({ actions, rolesByPlayer });
+  const resolved = resolveNightActions({ actions, rolesByPlayer, alivePlayers: Object.keys(rolesByPlayer) });
   assert.ok(resolved.deaths.has('Bomb'));
   assert.ok(resolved.deaths.has('Maf'));
   assert.ok(resolved.bombRetaliations.has('Maf'));
@@ -199,7 +199,7 @@ test('resolveNightActions: janitor hides role reveal', () => {
     { kind: 'clean', actor: 'Janitor', target: 'Town' },
   ];
 
-  const resolved = resolveNightActions({ actions, rolesByPlayer });
+  const resolved = resolveNightActions({ actions, rolesByPlayer, alivePlayers: Object.keys(rolesByPlayer) });
   assert.ok(resolved.deaths.has('Town'));
   const override = resolved.deathRevealOverrides.find(o => o.player === 'Town');
   assert.ok(override);
@@ -220,7 +220,7 @@ test('resolveNightActions: forger replaces role reveal', () => {
     { kind: 'forge', actor: 'Forger', target: 'Town', fakeRole: 'cop' },
   ];
 
-  const resolved = resolveNightActions({ actions, rolesByPlayer });
+  const resolved = resolveNightActions({ actions, rolesByPlayer, alivePlayers: Object.keys(rolesByPlayer) });
   assert.ok(resolved.deaths.has('Town'));
   const override = resolved.deathRevealOverrides.find(o => o.player === 'Town');
   assert.ok(override);
@@ -243,7 +243,7 @@ test('resolveNightActions: forger takes precedence over janitor', () => {
     { kind: 'forge', actor: 'Forger', target: 'Town', fakeRole: 'doctor' },
   ];
 
-  const resolved = resolveNightActions({ actions, rolesByPlayer });
+  const resolved = resolveNightActions({ actions, rolesByPlayer, alivePlayers: Object.keys(rolesByPlayer) });
   const override = resolved.deathRevealOverrides.find(o => o.player === 'Town');
   assert.ok(override);
   assert.equal(override?.revealedRole, 'doctor'); // Forger takes precedence

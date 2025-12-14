@@ -10,6 +10,13 @@ export class DayDiscussionPhase {
     const aliveNames = alivePlayers.map(p => p.config.name);
     let lastSpeakerName = 'none';
 
+    const mechanicsReminder = [
+      'Mechanics reminder (public):',
+      '- Tracker sees ONLY successful visits. "No visit" can mean they stayed home OR they were blocked.',
+      '- Town Roleblocker and Mafia Roleblocker cannot target themselves. Doctor CAN self-save.',
+      '- If the Mafia kill leader is blocked, another alive unblocked mafia-aligned player may perform the kill.',
+    ].join('\n');
+
     const voteTally = engine.state.round > 1 ? engine.getVoteTallyForDay(engine.state.round - 1) : null;
     const recapLines = [
       `Alive: ${aliveNames.join(', ') || '(none)'}`,
@@ -20,7 +27,7 @@ export class DayDiscussionPhase {
     ];
     engine.recordPublic({
       type: 'SYSTEM',
-      content: `Recap:\n- ${recapLines.join('\n- ')}`,
+      content: `${mechanicsReminder}\n\nRecap:\n- ${recapLines.join('\n- ')}`,
     });
 
     // Open discussion keeps the old pacing:
