@@ -7,6 +7,7 @@ export class Game {
   private state: GameState;
   private agents: Record<string, Agent>;
   private mafiaMemory?: FactionMemory;
+  private lastNightDeaths: string[] = [];
 
   constructor(config: GameConfig) {
     this.config = config;
@@ -61,6 +62,30 @@ export class Game {
     });
     this.broadcastPublicEvent(entry);
     logger.log(entry);
+  }
+
+  private getVoteTallyForDay(day: number): Record<string, number> | null {
+    const marker = `--- Day ${day} Voting ---`;
+    const startIndex = this.state.history.findIndex(e => e.type === 'SYSTEM' && e.content === marker);
+    if (startIndex < 0) return null;
+
+    const tally: Record<string, number> = {};
+    for (let i = startIndex + 1; i < this.state.history.length; i++) {
+      const e = this.state.history[i]!;
+      if (e.type === 'SYSTEM' && e.content.startsWith('--- ')) break;
+      if (e.type !== 'VOTE') continue;
+      const voteRaw = e.metadata?.vote;
+      const vote = typeof voteRaw === 'string' ? voteRaw : typeof voteRaw === 'number' ? String(voteRaw) : '';
+      if (!vote) continue;
+      tally[vote] = (tally[vote] ?? 0) + 1;
+    }
+    return tally;
+  }
+
+  private formatVoteTally(tally: Record<string, number>): string {
+    const entries = Object.entries(tally).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    if (entries.length === 0) return '(no votes)';
+    return entries.map(([k, v]) => `${k}: ${v}`).join(', ');
   }
 
   private assignRoles() {
@@ -149,7 +174,14 @@ export class Game {
       const validTargets = aliveNames.filter(n => n !== rb.config.name);
       if (validTargets.length > 0) {
         const target = await this.agents[rb.config.name].generateDecision(
-          `Night ${this.state.round}. You are the Roleblocker. Choose a player to block from performing an action.`,
+          `Night ${this.state.round}. You are the Roleblocker.
+Alive players: ${aliveNames.join(', ')}.
+
+Choose ONE player to block from performing an action tonight.
+Guidance (soft):
+- Prefer blocking someone you suspect is mafia or someone whose night action would be dangerous if they are mafia.
+- Use public behavior (pushy framing, coordinated narratives, strange vote positioning) to pick a target.
+- Avoid purely random blocks unless you have no read.`,
           validTargets
         );
         blockedPlayers.add(target);
@@ -245,7 +277,13 @@ Alive players: ${aliveNames.join(', ')}.`;
       const validTargets = aliveNames.filter(n => n !== cop.config.name);
       if (validTargets.length > 0) {
         const target = await this.agents[cop.config.name].generateDecision(
-           `Night ${this.state.round}. You are the Cop. Choose a player to investigate.`,
+           `Night ${this.state.round}. You are the Cop.
+Alive players: ${aliveNames.join(', ')}.
+
+Choose ONE player to investigate tonight.
+Guidance (soft):
+- Prioritize players driving narratives, coordinating votes, or whose behavior feels strategically motivated.
+- If town is stuck, investigate someone central to the discussion rather than a silent bystander.`,
            validTargets
         );
         
@@ -275,7 +313,14 @@ Alive players: ${aliveNames.join(', ')}.`;
       }
 
       doctorTarget = await this.agents[doc.config.name].generateDecision(
-        `Night ${this.state.round}. You are the Doctor. Choose a player to save.`,
+        `Night ${this.state.round}. You are the Doctor.
+Alive players: ${aliveNames.join(', ')}.
+
+Choose ONE player to save tonight.
+Guidance (soft):
+- Protect the player most likely to be killed (often a strong town voice or an obvious power-role candidate).
+- Repeated self-protect is usually low value unless you expect to be attacked or you are broadly suspected.
+- If you have no strong read, rotate protection to avoid being predictable.`,
         aliveNames
       );
       this.agents[doc.config.name]?.observePrivateEvent(
@@ -305,7 +350,14 @@ Alive players: ${aliveNames.join(', ')}.`;
          // Or we can add "nobody" as an option.
          const options = [...validTargets, 'nobody'];
          const decision = await this.agents[vigi.config.name].generateDecision(
-            `Night ${this.state.round}. You are the Vigilante. Choose a player to shoot, or 'nobody'.`,
+            `Night ${this.state.round}. You are the Vigilante.
+Alive players: ${aliveNames.join(', ')}.
+
+Choose ONE player to shoot, or 'nobody' to hold fire.
+Guidance (soft):
+- Avoid random shots early; shoot when you have a concrete suspect or town is stalling with repeated skips.
+- Prefer targets supported by multiple concrete red flags (vote positioning, contradictions, narrative steering).
+- If you're uncertain, 'nobody' is acceptable.`,
             options
          );
 
@@ -345,13 +397,16 @@ Alive players: ${aliveNames.join(', ')}.`;
     }
 
     if (deaths.size > 0) {
+      this.lastNightDeaths = [...deaths];
       for (const player of deaths) {
         this.killPlayer(player);
         this.recordPublic({ type: 'SYSTEM', content: `${player} died during the night.` });
       }
     } else if (!mafiaTarget && !vigilanteTarget) {
+       this.lastNightDeaths = [];
        this.recordPublic({ type: 'SYSTEM', content: 'Peaceful night. No attempts were made.' });
     } else if (deaths.size === 0) {
+       this.lastNightDeaths = [];
        // Attempts made but failed (saved)
        // Messages already logged above for saves
     }
@@ -360,68 +415,137 @@ Alive players: ${aliveNames.join(', ')}.`;
   private async dayPhase() {
     this.recordPublic({ type: 'SYSTEM', content: `--- Day ${this.state.round} Discussion ---` });
     
-    // Dynamic message limit: 10 + 5 per round.
-    // e.g. Day 1 = 15, Day 2 = 20...
-    const maxMessages = 10 + (this.state.round * 5);
-    let messagesSent = 0;
-    
     const alivePlayers = Object.values(this.state.players).filter(p => p.isAlive);
     const aliveCount = alivePlayers.length;
-    let consecutiveSkips = 0;
+    const aliveNames = alivePlayers.map(p => p.config.name);
 
-    logger.log({ type: 'SYSTEM', content: `Discussion started. Max messages: ${maxMessages}.` });
+    const voteTally =
+      this.state.round > 1 ? this.getVoteTallyForDay(this.state.round - 1) : null;
+    const recapLines = [
+      `Alive: ${aliveNames.join(', ') || '(none)'}`,
+      `Last night deaths: ${this.lastNightDeaths.length ? this.lastNightDeaths.join(', ') : 'none'}`,
+      this.state.round > 1
+        ? `Yesterday's votes: ${voteTally ? this.formatVoteTally(voteTally) : '(no vote data)'}`
+        : `Yesterday's votes: (Day 0)`,
+    ];
+    this.recordPublic({
+      type: 'SYSTEM',
+      content: `Recap:\n- ${recapLines.join('\n- ')}`,
+    });
 
-    // Round-robin iteration until termination condition
-    // We iterate endlessly over the list until break
-    let turnIndex = 0;
-    
-    while (messagesSent < maxMessages && consecutiveSkips < aliveCount) {
-        // Round robin pick
-        const player = alivePlayers[turnIndex % aliveCount];
-        turnIndex++;
+    // Open discussion keeps the old pacing:
+    // Day 1 = 15, Day 2 = 20, ...
+    const openDiscussionMaxMessages = 10 + (this.state.round * 5);
 
-        const name = player.config.name;
-        const context = `
-Current Phase: Day ${this.state.round}, Discussion.
+    logger.log({
+      type: 'SYSTEM',
+      content: `Discussion started. Phases: QuestionRound(${aliveCount} turns) -> OpenDiscussion(max ${openDiscussionMaxMessages} messages) -> PreVote(${aliveCount} turns).`,
+    });
+
+    // --- Phase A: Question Round (1 turn per alive player) ---
+    for (let i = 0; i < alivePlayers.length; i++) {
+      const player = alivePlayers[i]!;
+      const name = player.config.name;
+      const context = `
+Current Phase: Day ${this.state.round}, Question Round.
 This is your public speaking turn. Speak as ${name}.
-Goal: Convince others, find mafia (or hide if you are mafia).
-Alive players: ${alivePlayers.map(p => p.config.name).join(', ')}.
-Status: ${messagesSent}/${maxMessages} messages used.
-
+Alive players: ${aliveNames.join(', ')}.
 Instruction:
-- If you have something to say, say it.
-- If you have nothing new to add, reply with the single word "SKIP".
-- The discussion ends if everyone skips effectively.
-        `.trim();
+- Ask ONE targeted question to a specific living player.
+- Your question should reduce uncertainty (alignment, motives, votes, night actions).
+- Keep it concise and concrete. No generic “any thoughts?” questions.
+- If you truly cannot ask any question, reply with the single word "SKIP".
+      `.trim();
 
-        const message = await this.agents[name].generateResponse(context, []);
-        
-        // Check for SKIP
-        const isSkip = message.trim().toUpperCase() === 'SKIP';
+      const message = await this.agents[name].generateResponse(context, []);
+      const isSkip = message.trim().toUpperCase() === 'SKIP';
 
-        if (isSkip) {
-            consecutiveSkips++;
-            // Optionally log a quiet thought or system debug
-            this.agents[name]?.observePrivateEvent('You chose to SKIP this turn.');
-        } else {
-             consecutiveSkips = 0; // Reset on valid message
-             messagesSent++;
-             
-             const entry = {
-                type: 'CHAT' as const,
-                player: name,
-                content: message
-             };
-             
-             this.recordPublic(entry);
-        }
+      if (isSkip) {
+        this.agents[name]?.observePrivateEvent('You chose to SKIP this turn.');
+      } else {
+        this.recordPublic({
+          type: 'CHAT',
+          player: name,
+          content: message,
+        });
+      }
+    }
+
+    // --- Phase B: Open Discussion (round-robin until message budget or silence) ---
+    let openMessagesSent = 0;
+    let consecutiveSkips = 0;
+    let turnIndex = 0;
+
+    while (openMessagesSent < openDiscussionMaxMessages && consecutiveSkips < aliveCount) {
+      const player = alivePlayers[turnIndex % aliveCount]!;
+      turnIndex++;
+
+      const name = player.config.name;
+      const context = `
+Current Phase: Day ${this.state.round}, Open Discussion.
+This is your public speaking turn. Speak as ${name}.
+Alive players: ${aliveNames.join(', ')}.
+Status: ${openMessagesSent}/${openDiscussionMaxMessages} open-discussion messages used.
+
+Guidance:
+- Move the game forward with a concrete claim, inference, or question.
+- Prefer referencing specific prior events (votes, night deaths, inconsistencies).
+- If you agree with someone, add a NEW reason or a different angle; don't just echo.
+- If you have nothing useful to add, you may reply with the single word "SKIP".
+      `.trim();
+
+      const message = await this.agents[name].generateResponse(context, []);
+      const isSkip = message.trim().toUpperCase() === 'SKIP';
+
+      if (isSkip) {
+        consecutiveSkips++;
+        this.agents[name]?.observePrivateEvent('You chose to SKIP this turn.');
+      } else {
+        consecutiveSkips = 0;
+        openMessagesSent++;
+        this.recordPublic({
+          type: 'CHAT',
+          player: name,
+          content: message,
+        });
+      }
     }
     
     if (consecutiveSkips >= aliveCount) {
-       this.recordPublic({ type: 'SYSTEM', content: 'Discussion ended (silence settled over the town).' });
+      this.recordPublic({ type: 'SYSTEM', content: 'Open discussion ended (silence settled over the town).' });
     } else {
-       this.recordPublic({ type: 'SYSTEM', content: 'Discussion ended (time limit reached).' });
+      this.recordPublic({ type: 'SYSTEM', content: 'Open discussion ended (message limit reached).' });
     }
+
+    // --- Phase C: Pre-vote Statements (1 turn per alive player) ---
+    for (let i = 0; i < alivePlayers.length; i++) {
+      const player = alivePlayers[i]!;
+      const name = player.config.name;
+      const context = `
+Current Phase: Day ${this.state.round}, Pre-vote Statement.
+This is your final public statement before voting. Speak as ${name}.
+Alive players: ${aliveNames.join(', ')}.
+Instruction:
+- State your current #1 suspect OR say "skip" if you genuinely have no read.
+- Give a concrete reason tied to an event (vote, wording, inconsistency).
+- Say what evidence would change your mind.
+- Keep it short.
+      `.trim();
+
+      const message = await this.agents[name].generateResponse(context, []);
+      const isSkip = message.trim().toUpperCase() === 'SKIP';
+      if (isSkip) {
+        this.agents[name]?.observePrivateEvent('You chose to SKIP this turn.');
+      } else {
+        this.recordPublic({
+          type: 'CHAT',
+          player: name,
+          content: message,
+        });
+      }
+    }
+
+    this.recordPublic({ type: 'SYSTEM', content: 'Discussion ended (pre-vote statements complete).' });
   }
 
   private async votingPhase() {
@@ -487,8 +611,8 @@ Instruction:
 
   private checkWin(): boolean {
     const aliveFunctions = Object.values(this.state.players).filter(p => p.isAlive);
-    const mafiaCount = aliveFunctions.filter(p => p.role === 'mafia').length;
-    const villagerCount = aliveFunctions.filter(p => p.role !== 'mafia').length;
+    const mafiaCount = aliveFunctions.filter(p => p.role === 'mafia' || p.role === 'godfather').length;
+    const villagerCount = aliveFunctions.length - mafiaCount;
 
     if (mafiaCount === 0) {
       this.state.winners = 'villagers';
