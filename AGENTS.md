@@ -5,6 +5,7 @@
 - **Config**: Game rules and players defined in `game-config.yaml`. Parsed via `zod`.
 - **State**: In-memory `GameState` object passed through the game loop.
 - **Logging**: Structured JSON logs in `logs/` directory.
+- **Rules**: See [game_logic.md](game_logic.md) for a plain English description of roles and mechanics.
 
 ## Key Files
 - `src/config.ts`: Zod schemas for `GameConfig`.
