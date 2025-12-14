@@ -13,6 +13,9 @@ export class Game {
     this.agents = {};
     this.mafiaMemory = config.enable_faction_memory ? createFactionMemory('mafia') : undefined;
     const players: Record<string, PlayerState> = {};
+    
+    // Pass known players to logger for highlighting
+    logger.setKnownPlayers(config.players.map(p => p.name));
 
     // Initialize players and agents
     config.players.forEach(p => {
