@@ -50,7 +50,7 @@ export class DayDiscussionPhase {
       'Mechanics reminder (public):',
       '- Tracker sees ONLY successful visits. "No visit" can mean they stayed home OR they were blocked.',
       '- Town Roleblocker and Mafia Roleblocker cannot target themselves. Doctor CAN self-save.',
-      '- If the Mafia kill leader is blocked, another alive unblocked mafia-aligned player may perform the kill.',
+      '- If the Mafia killer is blocked, the Mafia kill fails.',
     ].join('\n');
 
     const voteTally = engine.state.round > 1 ? engine.getVoteTallyForDay(engine.state.round - 1) : null;

@@ -88,12 +88,8 @@ export async function collectMafiaActions(
     rounds: mafiaTeam.length >= 3 ? 2 : 1,
   });
 
-  // Find shooter (Godfather priority, then mafia, then other mafia roles)
-  // Backup shooter logic: if default shooter is blocked, another mafia member can perform the kill
-  // For now, we'll select the shooter and let the resolver handle blocking
-  // The resolver will need to check if the shooter is blocked and potentially use a backup
-  // But actually, we can't know who's blocked until resolution, so we'll just pick the primary shooter
-  // The backup shooter behavior will be handled in the resolver or night phase
+  // Find shooter (Godfather priority, then mafia, then other mafia roles).
+  // Rule: If the chosen shooter is blocked, the Mafia kill fails.
   const shooter = mafiaTeam.find(p => p.role === 'godfather') ||
     mafiaTeam.find(p => p.role === 'mafia') ||
     mafiaTeam[0]!;
@@ -114,7 +110,7 @@ export async function collectMafiaActions(
   const target = await engine.agentIO.decide(
     shooter.config.name,
     `Night ${engine.state.round}. You are leading the Mafia kill. Choose a target.
-Note: If you are blocked, another mafia member may perform the kill instead.`,
+Note: If you are blocked, the Mafia kill fails.`,
     validTargets
   );
 

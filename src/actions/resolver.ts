@@ -28,7 +28,9 @@ function resolveInvestigationResult(
   // Framer makes anyone appear MAFIA.
   if (isFramed) return 'MAFIA';
   // Godfather appears INNOCENT.
-  if (targetRole === 'mafia') return 'MAFIA';
+  if (targetRole === 'godfather') return 'INNOCENT';
+  // Other mafia-aligned roles appear MAFIA.
+  if (targetRole && isMafiaRole(targetRole)) return 'MAFIA';
   return 'INNOCENT';
 }
 
@@ -99,16 +101,9 @@ export function resolveNightActions(input: NightResolutionInput): ResolvedNightA
     appliedBlocks.add(block.actor);
   }
 
-  // 1b) Compute effective actions (apply mafia backup shooter BEFORE any visit-sensitive resolution).
-  // If the mafia kill leader is blocked, another alive, unblocked mafia-aligned player may perform the kill.
-  const aliveMafiaTeam = input.alivePlayers.filter(p => isMafiaRole(input.rolesByPlayer[p]));
-  const actionsForResolution: NightActionIntent[] = input.actions.map(a => {
-    if (a.kind !== 'kill' || a.source !== 'mafia') return a;
-    if (!blockedPlayers.has(a.actor)) return a;
-    const backupShooter = aliveMafiaTeam.find(p => p !== a.actor && !blockedPlayers.has(p));
-    if (!backupShooter) return a;
-    return { ...a, actor: backupShooter };
-  });
+  // 1b) Effective actions
+  // Rule: if the Mafia killer is blocked, the kill fails (no backup shooter).
+  const actionsForResolution: NightActionIntent[] = input.actions;
 
   // 2) Apply saves (blocked doctors don't save)
   for (const a of actionsForResolution) {

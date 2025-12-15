@@ -39,6 +39,7 @@ Alive players: ${aliveNames.join(', ')}.
 Choose ONE player to block tonight.
 Guidance (soft):
 - Block suspected power roles (cop, doctor, vigilante, tracker, roleblocker).
+- Blocking the Mafia's chosen killer will cause the Mafia kill to fail.
 - Coordinate with your mafia team on who to block.`,
       validTargets
     );

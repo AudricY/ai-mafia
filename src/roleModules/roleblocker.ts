@@ -21,6 +21,7 @@ Alive players: ${aliveNames.join(', ')}.
 Choose ONE player to block from performing an action tonight.
 Guidance (soft):
 - Prefer blocking someone you suspect is mafia or someone whose night action would be dangerous if they are mafia.
+- If you block the Mafia's chosen killer, the Mafia kill fails.
 - Use public behavior (pushy framing, coordinated narratives, strange vote positioning) to pick a target.
 - Avoid purely random blocks unless you have no read.
 - Note: Your block can be blocked by a Jailkeeper or higher-priority blocker.`,

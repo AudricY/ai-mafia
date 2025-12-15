@@ -49,12 +49,14 @@ test('resolveNightActions: cop sees mafia as MAFIA and godfather as INNOCENT', (
     Cop: 'cop',
     Maf: 'mafia',
     Gf: 'godfather',
+    MafRb: 'mafia_roleblocker',
     Town: 'villager',
   };
 
   const actions: NightActionIntent[] = [
     { kind: 'investigate', actor: 'Cop', target: 'Maf' },
     { kind: 'investigate', actor: 'Cop', target: 'Gf' },
+    { kind: 'investigate', actor: 'Cop', target: 'MafRb' },
     { kind: 'investigate', actor: 'Cop', target: 'Town' },
   ];
 
@@ -62,6 +64,7 @@ test('resolveNightActions: cop sees mafia as MAFIA and godfather as INNOCENT', (
   const byTarget = new Map(resolved.investigations.map(r => [r.target, r.result] as const));
   assert.equal(byTarget.get('Maf'), 'MAFIA');
   assert.equal(byTarget.get('Gf'), 'INNOCENT');
+  assert.equal(byTarget.get('MafRb'), 'MAFIA');
   assert.equal(byTarget.get('Town'), 'INNOCENT');
 });
 

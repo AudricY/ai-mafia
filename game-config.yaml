@@ -37,15 +37,18 @@ players:
   - name: "Ivy"
     model: "xai/grok-4.1-fast-reasoning"
 
+  - name: "Judy"
+    model: "xai/grok-4.1-fast-reasoning"
+    temperature: 0.7
+
 role_seed: 123
 role_counts:
   godfather: 1
-  janitor: 1
-  vigilante: 1
-  doctor: 1
+  mafia_roleblocker: 1
+  mafia: 1
   cop: 1
+  doctor: 1
   roleblocker: 1
-  tracker: 1
-  villager: 1
-  executioner: 1
+  vigilante: 1
+  villager: 3
 

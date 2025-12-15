@@ -79,42 +79,8 @@ export class NightPhase {
       }
     }
 
-    // If the mafia kill was performed by a different actor than the original kill leader,
-    // notify the mafia faction (for transparency).
-    const mafiaKillIntents = actions.filter(
-      a => a.kind === 'kill' && a.source === 'mafia'
-    );
-    for (const intent of mafiaKillIntents) {
-      const resolvedKill = resolved.kills.find(
-        k => k.source === 'mafia' && k.target === intent.target
-      );
-      if (!resolvedKill) continue;
-      if (resolvedKill.blocked) continue;
-      if (resolvedKill.actor === intent.actor) continue;
-
-      const allMafia = engine
-        .getAlivePlayers()
-        .filter(
-          p =>
-            p.role === 'mafia' ||
-            p.role === 'godfather' ||
-            p.role === 'mafia_roleblocker' ||
-            p.role === 'framer' ||
-            p.role === 'janitor' ||
-            p.role === 'forger'
-        );
-      allMafia.forEach(m => {
-        engine.agents[m.config.name]?.observeFactionEvent(
-          `Primary shooter ${intent.actor} was blocked. Backup shooter ${resolvedKill.actor} performed the kill on ${resolvedKill.target}.`
-        );
-      });
-      logger.log({
-        type: 'ACTION',
-        player: resolvedKill.actor,
-        content: `performed backup kill on ${resolvedKill.target} (primary shooter ${intent.actor} was blocked)`,
-        metadata: { target: resolvedKill.target, role: engine.state.players[resolvedKill.actor]?.role, faction: 'mafia', visibility: 'faction' },
-      });
-    }
+    // Note: Mafia backup-shooter behavior is intentionally NOT supported.
+    // If the Mafia killer is blocked, the kill fails.
 
     // Publicly announce saved kill attempts.
     for (const k of resolved.kills) {
