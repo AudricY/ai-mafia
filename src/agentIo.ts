@@ -1,4 +1,5 @@
 import type { CoreMessage } from 'ai';
+import { randomInt } from 'node:crypto';
 import { logger } from './logger.js';
 import type { Agent } from './agent.js';
 import type { GameLogEntry } from './types.js';
@@ -7,6 +8,21 @@ export interface AgentIOConfig {
   responseTimeoutMs: number;
   decisionTimeoutMs: number;
   maxAttempts: number;
+}
+
+function isDryRun(): boolean {
+  const v = (process.env.AI_MAFIA_DRY_RUN ?? process.env.DRY_RUN ?? '').toLowerCase().trim();
+  return v === '1' || v === 'true' || v === 'yes' || v === 'on';
+}
+
+function shuffleInPlace<T>(arr: T[]): void {
+  // Fisher–Yates shuffle.
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = randomInt(i + 1);
+    const tmp = arr[i]!;
+    arr[i] = arr[j]!;
+    arr[j] = tmp;
+  }
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
@@ -83,6 +99,9 @@ export class AgentIO {
 
     const attemptMetaBase = { actor, kind: 'decision' } as const;
     const optionsArray = [...options];
+    // Avoid stable option-order bias for low-temperature "pick one" decisions.
+    // Keep dry-run deterministic/repeatable by preserving the original order.
+    if (!isDryRun() && optionsArray.length > 1) shuffleInPlace(optionsArray);
 
     let lastError: unknown = null;
     for (let attempt = 1; attempt <= this.cfg.maxAttempts; attempt++) {
@@ -137,4 +156,5 @@ export class AgentIO {
     return 'No reflections.';
   }
 }
+
 

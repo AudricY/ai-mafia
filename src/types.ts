@@ -26,7 +26,7 @@ export type Role = z.infer<typeof RoleSchema>;
 export const PlayerConfigSchema = z.object({
   name: z.string(),
   // AI Gateway model id in `provider/model` format, e.g. `openai/gpt-4o`.
-  model: z.string().default('openai/gpt-4o'),
+  model: z.string().default('xai/grok-4.1-fast-reasoning'),
   temperature: z.number().default(0.7),
   systemPrompt: z.string().optional(),
 });

@@ -9,15 +9,12 @@ log_thoughts: true
 players:
   - name: "Alice"
     model: "xai/grok-4.1-fast-reasoning"
-    temperature: 0.8
 
   - name: "Bob"
     model: "xai/grok-4.1-fast-reasoning"
-    temperature: 0.6
 
   - name: "Charlie"
     model: "xai/grok-4.1-fast-reasoning"
-    temperature: 0.9
 
   - name: "Dave"
     model: "xai/grok-4.1-fast-reasoning"
@@ -39,7 +36,6 @@ players:
 
   - name: "Judy"
     model: "xai/grok-4.1-fast-reasoning"
-    temperature: 0.7
 
 role_seed: 123
 role_counts:

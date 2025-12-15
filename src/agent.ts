@@ -453,7 +453,7 @@ Output format:
         model,
         system: systemPrompt,
         messages,
-        temperature: 0.2, // Lower temp for decisions
+        temperature: this.config.temperature,
       });
 
       const parsed = this.tryParseJsonObject(result.text);
