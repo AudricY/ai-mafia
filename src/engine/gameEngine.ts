@@ -2,7 +2,13 @@ import type { GameConfig, GameState, PlayerState, GameLogEntry, Role } from '../
 import { Agent, type FactionMemory, createFactionMemory } from '../agent.js';
 import { AgentIO } from '../agentIo.js';
 import { logger } from '../logger.js';
-import { formatRoleSetupForPrompt, formatRoleSetupForPublicLog } from '../roles.js';
+import {
+  formatRoleSetupForPrompt,
+  formatRoleSetupForPublicLog,
+  formatPossibleRolesForPrompt,
+  formatPossibleRolesForPublicLog,
+  ROLE_DEFINITIONS,
+} from '../roles.js';
 import { NightPhase } from '../phases/nightPhase.ts';
 import { DayDiscussionPhase } from '../phases/dayDiscussionPhase.ts';
 import { DayVotingPhase } from '../phases/dayVotingPhase.ts';
@@ -198,9 +204,14 @@ export class GameEngine {
   }
 
   async start() {
+    const visibility = this.config.role_setup_visibility ?? 'exact';
+    const label =
+      visibility === 'exact'
+        ? 'Available roles this game'
+        : 'Possible roles this game (not confirmed)';
     this.recordPublic({
       type: 'SYSTEM',
-      content: `Available roles this game: ${this.roleSetupPublicText}`,
+      content: `${label}: ${this.roleSetupPublicText}`,
     });
     this.recordPublic({ type: 'SYSTEM', content: 'Game Starting...' });
 
@@ -489,11 +500,38 @@ export class GameEngine {
     }
 
     this.roleCounts = this.computeRoleCountsFromState();
-    this.roleSetupPublicText = formatRoleSetupForPublicLog(this.roleCounts);
+    const visibility = this.config.role_setup_visibility ?? 'exact';
+
+    // Compute possible roles and format rules based on visibility mode
+    let possibleRoles: Role[] = [];
+    if (visibility === 'pool') {
+      if (this.config.role_pool && this.config.role_pool.length > 0) {
+        possibleRoles = this.config.role_pool;
+      } else if (this.config.role_counts) {
+        possibleRoles = Object.keys(this.config.role_counts) as Role[];
+      } else {
+        // Fallback to all roles if no pool/counts specified
+        possibleRoles = Object.keys(ROLE_DEFINITIONS) as Role[];
+      }
+    } else if (visibility === 'all') {
+      possibleRoles = Object.keys(ROLE_DEFINITIONS) as Role[];
+    }
+
+    // Set public text based on visibility
+    if (visibility === 'exact') {
+      this.roleSetupPublicText = formatRoleSetupForPublicLog(this.roleCounts);
+    } else {
+      this.roleSetupPublicText = formatPossibleRolesForPublicLog(possibleRoles);
+    }
 
     // Inject dynamic rules so everyone knows the role setup and mechanics for this game.
     const baseRules = this.config.system_prompt?.trim() ?? '';
-    const roleRules = formatRoleSetupForPrompt(this.roleCounts);
+    let roleRules: string;
+    if (visibility === 'exact') {
+      roleRules = formatRoleSetupForPrompt(this.roleCounts);
+    } else {
+      roleRules = formatPossibleRolesForPrompt(possibleRoles);
+    }
     const fullRules = [baseRules, roleRules].filter(Boolean).join('\n\n');
     for (const name of playerNames) {
       this.agents[name]?.setGameRules(fullRules);

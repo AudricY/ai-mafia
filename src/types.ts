@@ -48,6 +48,9 @@ export const GameConfigSchema = z.object({
   memory_window_size: z.number().int().positive().default(20),
   enable_faction_memory: z.boolean().default(true),
   log_thoughts: z.boolean().default(false),
+  // Controls what role mechanics are disclosed to agents: 'exact' (only roles in play with counts),
+  // 'pool' (possible roles from role_pool/role_counts, no counts), or 'all' (all roles, no counts).
+  role_setup_visibility: z.enum(['exact', 'pool', 'all']).default('exact'),
   // If roles are not explicitly assigned, the game engine will randomize them based on player count
 });
 export type GameConfig = z.infer<typeof GameConfigSchema>;

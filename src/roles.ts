@@ -173,3 +173,46 @@ export function formatRoleSetupForPublicLog(roleCounts: Partial<Record<Role, num
     .map(r => `${r}${(roleCounts[r] ?? 0) > 1 ? ` x${roleCounts[r]}` : ''}`);
   return parts.length ? parts.join(', ') : '(unknown)';
 }
+
+export function formatPossibleRolesForPrompt(
+  roles: Role[],
+  opts?: { includeAbilitiesAndNotes?: boolean }
+): string {
+  const includeDetails = opts?.includeAbilitiesAndNotes ?? true;
+  const uniqueRoles = Array.from(new Set(roles)).sort((a, b) => a.localeCompare(b));
+  const lines = uniqueRoles.map(r => {
+    const def = ROLE_DEFINITIONS[r];
+    if (!def) return `- ${r}: (unknown role)`;
+    const parts: string[] = [`- ${r}: ${def.summary}`];
+    if (includeDetails) {
+      if (def.abilities.length) parts.push(`  Abilities: ${def.abilities.join(' ')}`);
+      if (def.notes?.length) parts.push(`  Notes: ${def.notes.join(' ')}`);
+    }
+    return parts.join('\n');
+  });
+
+  const neutralRoles = uniqueRoles.filter(r => ROLE_DEFINITIONS[r]?.team === 'neutral');
+  const neutralWinConditions: string[] = [];
+  if (neutralRoles.includes('jester')) {
+    neutralWinConditions.push('- Jester: get eliminated by day vote (game ends immediately).');
+  }
+  if (neutralRoles.includes('executioner')) {
+    neutralWinConditions.push('- Executioner: get your assigned target eliminated by day vote (co-win, game continues).');
+  }
+
+  return [
+    'Possible roles in this match (not confirmed):',
+    'Do not assume any specific role exists unless supported by public evidence.',
+    ...lines,
+    '',
+    'Win conditions:',
+    "- Town: eliminate all Mafia (mafia, godfather, mafia_roleblocker, framer, janitor, forger).",
+    '- Mafia: equal or outnumber the Town.',
+    ...(neutralWinConditions.length > 0 ? neutralWinConditions : []),
+  ].join('\n');
+}
+
+export function formatPossibleRolesForPublicLog(roles: Role[]): string {
+  const uniqueRoles = Array.from(new Set(roles)).sort((a, b) => a.localeCompare(b));
+  return uniqueRoles.length ? uniqueRoles.join(', ') : '(unknown)';
+}

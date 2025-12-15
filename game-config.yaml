@@ -4,6 +4,7 @@ system_prompt: |
   Be persuasive, deceptive if necessary, and observant.
 
 log_thoughts: true
+# role_setup_visibility: exact  # Options: 'exact' (only roles in play with counts), 'pool' (possible roles from role_pool/role_counts, no counts), 'all' (all roles, no counts)
 
 players:
   - name: "Alice"
@@ -38,10 +39,10 @@ players:
 
 roles:
   Alice: godfather
-  Bob: mafia_roleblocker
-  Charlie: cop
+  Bob: janitor
+  Charlie: vigilante
   Dave: doctor
-  Eve: vigilante
+  Eve: cop
   Frank: roleblocker
   Grace: tracker
   Henry: villager
