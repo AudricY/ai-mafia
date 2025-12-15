@@ -37,14 +37,15 @@ players:
   - name: "Ivy"
     model: "xai/grok-4.1-fast-reasoning"
 
-roles:
-  Alice: godfather
-  Bob: janitor
-  Charlie: vigilante
-  Dave: doctor
-  Eve: cop
-  Frank: roleblocker
-  Grace: tracker
-  Henry: villager
-  Ivy: executioner
+role_seed: 123
+role_counts:
+  godfather: 1
+  janitor: 1
+  vigilante: 1
+  doctor: 1
+  cop: 1
+  roleblocker: 1
+  tracker: 1
+  villager: 1
+  executioner: 1
 

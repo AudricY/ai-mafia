@@ -40,7 +40,13 @@ export const GameConfigSchema = z.object({
   // If roles are not explicitly assigned, the game can select roles from a pool.
   // The selected role setup (including counts) is intended to be public knowledge, while assignments remain hidden.
   role_pool: z.array(RoleSchema).optional(),
-  role_counts: z.record(RoleSchema, z.number().int().nonnegative()).optional(),
+  role_counts: z
+    .record(z.string(), z.number().int().nonnegative())
+    .refine(
+      (val) => Object.keys(val).every((key) => RoleSchema.safeParse(key).success),
+      { message: 'All keys in role_counts must be valid roles' }
+    )
+    .optional(),
   role_seed: z.number().int().optional(),
   // Seed for the initial player turn order (optional). If omitted, a best-effort
   // seed is chosen (dry-run seed if present, otherwise time-based).
