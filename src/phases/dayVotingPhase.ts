@@ -6,27 +6,36 @@ export class DayVotingPhase {
 
     const alivePlayers = engine.getAlivePlayers();
     const aliveNames = alivePlayers.map(p => p.config.name);
-    const options = [...aliveNames, 'skip'];
+    const options = [...aliveNames, 'skip'] as const;
 
     const votes: Record<string, number> = {};
     options.forEach(o => (votes[o] = 0));
 
-    for (const player of alivePlayers) {
-      const vote = await engine.agentIO.decide(
-        player.config.name,
-        `Day ${engine.state.round} voting. Choose a player to eliminate or 'skip'.`,
-        options
-      );
+    // Collect all votes concurrently so each agent decides in parallel.
+    const voteResults = await Promise.all(
+      alivePlayers.map(async player => {
+        const vote = await engine.agentIO.decide(
+          player.config.name,
+          `Day ${engine.state.round} voting. Choose a player to eliminate or 'skip'.`,
+          options
+        );
+        return { playerName: player.config.name, vote };
+      })
+    );
 
-      engine.recordPublic({
-        type: 'VOTE',
-        player: player.config.name,
-        content: `voted for ${vote}`,
-        metadata: { vote },
+    // Apply and log votes in a stable order (by player name) for deterministic logs.
+    voteResults
+      .sort((a, b) => a.playerName.localeCompare(b.playerName))
+      .forEach(({ playerName, vote }) => {
+        engine.recordPublic({
+          type: 'VOTE',
+          player: playerName,
+          content: `voted for ${vote}`,
+          metadata: { vote },
+        });
+
+        votes[vote] = (votes[vote] || 0) + 1;
       });
-
-      votes[vote] = (votes[vote] || 0) + 1;
-    }
 
     // Tally
     let maxVotes = 0;
@@ -94,4 +103,5 @@ export class DayVotingPhase {
     }
   }
 }
+
 
