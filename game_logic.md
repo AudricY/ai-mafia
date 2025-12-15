@@ -51,7 +51,8 @@ This is when everyone meets to discuss the events.
 2.  **Discussion**:
     - Players speak in turns.
     - This is a dynamic conversation: players can choose to **SKIP** their turn if they have nothing to say.
-    - Discussion ends when everyone is silent or the "patience limit" (message cap) is reached.
+    - **Skip-Discussion Vote**: At any time during discussion, players can vote to skip the discussion phase and proceed directly to voting. To vote, include `VOTE_SKIP_DISCUSSION` on its own line in your message. To retract your vote, include `UNVOTE_SKIP_DISCUSSION` on its own line. If a strict majority (more than half) of alive players vote to skip, discussion ends immediately and voting begins. The vote command is removed from your public message; any other text you write is still spoken.
+    - Discussion ends when everyone is silent, the "patience limit" (message cap) is reached, or a majority votes to skip discussion.
 3.  **Voting**:
     - Every player votes to **Eliminate** someone or **Skip** voting.
     - If a player receives the majority of votes, they are executed and their role is revealed.

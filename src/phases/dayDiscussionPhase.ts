@@ -1,6 +1,42 @@
 import type { GameEngine } from '../engine/gameEngine.js';
 import { logger } from '../logger.js';
 
+/**
+ * Parses vote tokens from a message and returns the cleaned message and vote action.
+ * Returns { cleanedMessage, voteAction } where voteAction is 'vote', 'unvote', or null.
+ */
+export function parseSkipVoteToken(message: string): { cleanedMessage: string; voteAction: 'vote' | 'unvote' | null } {
+  const lines = message.split('\n');
+  let hasVote = false;
+  let hasUnvote = false;
+  const cleanedLines: string[] = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const upper = trimmed.toUpperCase();
+    if (upper === 'VOTE_SKIP_DISCUSSION') {
+      hasVote = true;
+      // Skip this line (don't add to cleanedLines)
+    } else if (upper === 'UNVOTE_SKIP_DISCUSSION') {
+      hasUnvote = true;
+      // Skip this line (don't add to cleanedLines)
+    } else {
+      cleanedLines.push(line);
+    }
+  }
+
+  // If both tokens present, prefer unvote (more conservative - allows retraction)
+  let voteAction: 'vote' | 'unvote' | null = null;
+  if (hasUnvote) {
+    voteAction = 'unvote';
+  } else if (hasVote) {
+    voteAction = 'vote';
+  }
+
+  const cleanedMessage = cleanedLines.join('\n').trim();
+  return { cleanedMessage, voteAction };
+}
+
 export class DayDiscussionPhase {
   async run(engine: GameEngine): Promise<void> {
     engine.recordPublic({ type: 'SYSTEM', content: `--- Day ${engine.state.round} Discussion ---` });
@@ -39,6 +75,65 @@ export class DayDiscussionPhase {
       content: `Discussion started. Phases: QuestionRound(${aliveCount} turns) -> OpenDiscussion(max ${openDiscussionMaxMessages} messages) -> PreVote(${aliveCount} turns).`,
     });
 
+    // Track skip-discussion votes
+    const skipVotes = new Set<string>();
+    const majorityThreshold = Math.floor(aliveCount / 2) + 1;
+
+    /**
+     * Helper to check if skip vote threshold is reached and handle early exit if so.
+     * Returns true if discussion should end early.
+     */
+    const checkSkipThreshold = (): boolean => {
+      if (skipVotes.size >= majorityThreshold) {
+        engine.recordPublic({
+          type: 'SYSTEM',
+          content: `Discussion ended early: ${skipVotes.size}/${aliveCount} players voted to skip discussion (majority reached).`,
+        });
+        return true;
+      }
+      return false;
+    };
+
+    /**
+     * Helper to process a player's message for skip vote tokens and update vote state.
+     * Returns the cleaned message (with vote tokens removed).
+     */
+    const processSkipVote = (playerName: string, message: string): string => {
+      const { cleanedMessage, voteAction } = parseSkipVoteToken(message);
+      
+      if (voteAction === 'vote') {
+        if (!skipVotes.has(playerName)) {
+          skipVotes.add(playerName);
+          engine.recordPublic({
+            type: 'VOTE',
+            player: playerName,
+            content: 'voted to skip discussion',
+            metadata: { vote: 'skip_discussion' },
+          });
+        }
+      } else if (voteAction === 'unvote') {
+        if (skipVotes.has(playerName)) {
+          skipVotes.delete(playerName);
+          engine.recordPublic({
+            type: 'VOTE',
+            player: playerName,
+            content: 'retracted skip-discussion vote',
+            metadata: { vote: 'skip_discussion', retracted: true },
+          });
+        }
+      }
+      
+      return cleanedMessage;
+    };
+
+    /**
+     * Helper to build skip vote status text for prompts.
+     */
+    const getSkipVoteStatus = (playerName: string): string => {
+      const currentVote = skipVotes.has(playerName) ? 'voted' : 'not voted';
+      return `Skip-discussion votes: ${skipVotes.size}/${aliveCount} (need ${majorityThreshold}). You currently: ${currentVote}.`;
+    };
+
     // --- Phase A: Question Round (1 turn per alive player) ---
     for (let i = 0; i < alivePlayers.length; i++) {
       const player = alivePlayers[i]!;
@@ -52,25 +147,40 @@ Speaking order (fixed, round-robin): ${aliveNames.join(' -> ')}.
 Your position in the order: ${i + 1}/${aliveCount}. Next speaker: ${nextSpeaker}.
 Previous speaker: ${lastSpeakerName}.
 
+${getSkipVoteStatus(name)}
+
+Skip-discussion voting:
+- You can vote to skip discussion by including "VOTE_SKIP_DISCUSSION" on its own line in your response.
+- You can retract your vote by including "UNVOTE_SKIP_DISCUSSION" on its own line.
+- If a majority of players vote to skip, discussion ends immediately and voting begins.
+- The vote command line will be removed from your public message; any other text you write will still be spoken.
+
 Turn protocol (important):
 - Discussion is strictly sequential / turn-based (one speaker at a time).
 - You are speaking immediately after the previous speaker above.
-- Avoid rehashing the previous speaker’s main point. If you reference it, do so briefly and add something new (a different angle or a targeted question).
+- Avoid rehashing the previous speaker's main point. If you reference it, do so briefly and add something new (a different angle or a targeted question).
 - If you truly cannot add value, reply with the single word "SKIP".
 
 Instruction:
 - Ask ONE targeted question to a specific living player.
 - Your question should reduce uncertainty (alignment, motives, votes, night actions).
-- Keep it concise and concrete. No generic “any thoughts?” questions.
+- Keep it concise and concrete. No generic "any thoughts?" questions.
 - If you truly cannot ask any question, reply with the single word "SKIP".
       `.trim();
 
-      const message = await engine.agentIO.respond(name, context, []);
+      const rawMessage = await engine.agentIO.respond(name, context, []);
+      const message = processSkipVote(name, rawMessage);
+      
+      // Check if threshold reached after processing vote
+      if (checkSkipThreshold()) {
+        return;
+      }
+
       const isSkip = message.trim().toUpperCase() === 'SKIP';
 
       if (isSkip) {
         engine.agents[name]?.observePrivateEvent('You chose to SKIP this turn.');
-      } else {
+      } else if (message.trim()) {
         engine.recordPublic({
           type: 'CHAT',
           player: name,
@@ -101,10 +211,18 @@ Your position in the order: ${idx + 1}/${aliveCount}. Next speaker: ${nextSpeake
 Status: ${openMessagesSent}/${openDiscussionMaxMessages} open-discussion messages used.
 Previous speaker: ${lastSpeakerName}.
 
+${getSkipVoteStatus(name)}
+
+Skip-discussion voting:
+- You can vote to skip discussion by including "VOTE_SKIP_DISCUSSION" on its own line in your response.
+- You can retract your vote by including "UNVOTE_SKIP_DISCUSSION" on its own line.
+- If a majority of players vote to skip, discussion ends immediately and voting begins.
+- The vote command line will be removed from your public message; any other text you write will still be spoken.
+
 Turn protocol (important):
 - Discussion is strictly sequential / turn-based (one speaker at a time).
 - You are speaking immediately after the previous speaker above.
-- Avoid repeating the previous speaker’s core point. If you agree, reference it briefly and add a new reason, a different implication, or a targeted question.
+- Avoid repeating the previous speaker's core point. If you agree, reference it briefly and add a new reason, a different implication, or a targeted question.
 - If you have nothing useful to add, you may reply with the single word "SKIP".
 
 Guidance:
@@ -114,13 +232,20 @@ Guidance:
 - If you have nothing useful to add, you may reply with the single word "SKIP".
       `.trim();
 
-      const message = await engine.agentIO.respond(name, context, []);
+      const rawMessage = await engine.agentIO.respond(name, context, []);
+      const message = processSkipVote(name, rawMessage);
+      
+      // Check if threshold reached after processing vote
+      if (checkSkipThreshold()) {
+        return;
+      }
+
       const isSkip = message.trim().toUpperCase() === 'SKIP';
 
       if (isSkip) {
         consecutiveSkips++;
         engine.agents[name]?.observePrivateEvent('You chose to SKIP this turn.');
-      } else {
+      } else if (message.trim()) {
         consecutiveSkips = 0;
         openMessagesSent++;
         engine.recordPublic({
@@ -151,6 +276,14 @@ Speaking order (fixed, round-robin): ${aliveNames.join(' -> ')}.
 Your position in the order: ${i + 1}/${aliveCount}. Next speaker: ${nextSpeaker}.
 Previous speaker: ${lastSpeakerName}.
 
+${getSkipVoteStatus(name)}
+
+Skip-discussion voting:
+- You can vote to skip discussion by including "VOTE_SKIP_DISCUSSION" on its own line in your response.
+- You can retract your vote by including "UNVOTE_SKIP_DISCUSSION" on its own line.
+- If a majority of players vote to skip, discussion ends immediately and voting begins.
+- The vote command line will be removed from your public message; any other text you write will still be spoken.
+
 Turn protocol (important):
 - Discussion is strictly sequential / turn-based (one speaker at a time).
 - You are speaking immediately after the previous speaker above.
@@ -164,11 +297,18 @@ Instruction:
 - Keep it short.
       `.trim();
 
-      const message = await engine.agentIO.respond(name, context, []);
+      const rawMessage = await engine.agentIO.respond(name, context, []);
+      const message = processSkipVote(name, rawMessage);
+      
+      // Check if threshold reached after processing vote
+      if (checkSkipThreshold()) {
+        return;
+      }
+
       const isSkip = message.trim().toUpperCase() === 'SKIP';
       if (isSkip) {
         engine.agents[name]?.observePrivateEvent('You chose to SKIP this turn.');
-      } else {
+      } else if (message.trim()) {
         engine.recordPublic({
           type: 'CHAT',
           player: name,
