@@ -28,7 +28,8 @@ Guidance (soft):
 - Protect the player most likely to be killed (often a strong town voice or an obvious power-role candidate).
 - Repeated self-protect is usually low value unless you expect to be attacked or you are broadly suspected.
 - If you have no strong read, rotate protection to avoid being predictable.
-- Note: If you are blocked, your save will not work.`,
+- Note: If you are blocked, you will receive an explicit message saying "You were blocked and could not save anyone!".
+- If you do NOT receive a "blocked" message, your save was successful (even if the target wasn't attacked and you get no other feedback). Assume your action went through unless told otherwise.`,
       aliveNames,
       [],
       systemAddendum ?? undefined

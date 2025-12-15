@@ -29,7 +29,8 @@ Choose ONE player to investigate tonight.
 Guidance (soft):
 - Prioritize players driving narratives, coordinating votes, or whose behavior feels strategically motivated.
 - If town is stuck, investigate someone central to the discussion rather than a silent bystander.
-- Note: If you are blocked, your investigation will not work. Also note that Framers can make players appear MAFIA.`,
+- Note: If you receive a "MAFIA" result, it is definitive textually (the message will say "is MAFIA"). However, keep in mind that Framers can also make innocent players appear as MAFIA. You must decide how to present this certainty to the town.
+- If you are blocked, you will receive an explicit message like "You were blocked and could not investigate!". If you get a result (INNOCENT or MAFIA), you were NOT blocked.`,
       validTargets,
       [],
       systemAddendum ?? undefined

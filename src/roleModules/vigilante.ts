@@ -32,7 +32,8 @@ Guidance (soft):
 - Avoid random shots early; shoot when you have a concrete suspect or town is stalling with repeated skips.
 - Prefer targets supported by multiple concrete red flags (vote positioning, contradictions, narrative steering).
 - If you're uncertain, 'nobody' is acceptable.
-- Note: If you are blocked, your shot will not work.`,
+- Note: If you are blocked, you will receive an explicit message saying "You were blocked and could not perform the kill!".
+- If you do NOT receive a "blocked" message, your shot was fired. If the target doesn't die, they were likely protected (e.g. by a Doctor) or immune. Do not confuse "target didn't die" with "I was blocked".`,
       options,
       [],
       systemAddendum ?? undefined

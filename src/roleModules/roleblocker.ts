@@ -30,7 +30,8 @@ Guidance (soft):
 - If you block the Mafia's chosen killer, the Mafia kill fails.
 - Use public behavior (pushy framing, coordinated narratives, strange vote positioning) to pick a target.
 - Avoid purely random blocks unless you have no read.
-- Note: Your block can be blocked by a Jailkeeper or higher-priority blocker.`,
+- Note: If YOU are blocked, you will receive an explicit message saying "You were blocked and could not block anyone!".
+- If you do NOT receive a "blocked" message, your block attempt went through. You will not receive a confirmation message of success, but you can assume you performed your action.`,
       validTargets,
       [],
       systemAddendum ?? undefined
