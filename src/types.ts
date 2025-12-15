@@ -44,7 +44,6 @@ export const GameConfigSchema = z.object({
   // seed is chosen (dry-run seed if present, otherwise time-based).
   player_order_seed: z.number().int().optional(),
   memory_window_size: z.number().int().positive().default(20),
-  memory_summary_max_chars: z.number().int().positive().default(1200),
   enable_faction_memory: z.boolean().default(true),
   log_thoughts: z.boolean().default(false),
   // If roles are not explicitly assigned, the game engine will randomize them based on player count

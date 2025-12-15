@@ -42,7 +42,6 @@ function parseAlivePlayersFromContext(systemContext: string): string[] {
 
 export interface AgentMemoryConfig {
   publicWindowSize: number;
-  summaryMaxChars: number;
 }
 
 export interface FactionMemory {
@@ -66,15 +65,15 @@ export class Agent {
   // Public, shared-by-all info (bounded, raw-ish).
   private publicWindow: CoreMessage[] = [];
 
-  // Private, per-agent memory (summarized + a small fact log).
-  private privateSummary = '';
-  private privateFacts: string[] = [];
+  // Private, per-agent memory: append-only notebook (capped to last 12,000 chars).
+  private privateNotebook = '';
 
   // Optional shared faction memory (by reference).
   private factionMemory?: FactionMemory;
 
-  private isSummarizingPublic = false;
-  private isSummarizingFaction = false;
+  // Constants for notebook management
+  private readonly notebookMaxChars = 12000;
+  private readonly noteMaxChars = 300;
 
   private didLogModelInit = false;
   private cachedModelId?: string;
@@ -97,7 +96,6 @@ export class Agent {
     this.logThoughts = opts?.logThoughts ?? false;
     this.memoryConfig = {
       publicWindowSize: opts?.memory?.publicWindowSize ?? 20,
-      summaryMaxChars: opts?.memory?.summaryMaxChars ?? 3000,
     };
   }
 
@@ -128,17 +126,31 @@ export class Agent {
   }
 
   observePrivateEvent(text: string) {
-    this.privateFacts.push(text);
-    // Keep private facts bounded to avoid unbounded growth.
-    if (this.privateFacts.length > 50) {
-      this.privateFacts = this.privateFacts.slice(-50);
-    }
+    this.appendToNotebook(text);
     if (this.logThoughts) {
       logger.log({
         type: 'THOUGHT',
         player: this.config.name,
-        content: `Private fact added: ${text}`,
+        content: `Private event: ${text}`,
       });
+    }
+  }
+
+  private appendToNotebook(text: string): void {
+    // Normalize to 1 line (replace newlines with spaces)
+    const normalized = text.replace(/\n/g, ' ').trim();
+    if (!normalized) return;
+
+    // Append with newline separator
+    if (this.privateNotebook) {
+      this.privateNotebook += '\n' + normalized;
+    } else {
+      this.privateNotebook = normalized;
+    }
+
+    // Keep tail last 12,000 chars
+    if (this.privateNotebook.length > this.notebookMaxChars) {
+      this.privateNotebook = this.privateNotebook.slice(-this.notebookMaxChars);
     }
   }
 
@@ -222,11 +234,11 @@ ${systemConstraints ? `\n${systemConstraints.trim()}\n` : ''}
   }
 
   private buildMemoryUserMessage(situationalContext: string, decisionConstraints?: string): CoreMessage[] {
+    // Cap public window - drop overflow instead of summarizing
     const publicLines = this.publicWindow
       .slice(-this.memoryConfig.publicWindowSize)
       .map(m => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content)));
 
-    const privateFacts = this.privateFacts.slice(-15);
     const factionSummary = this.factionMemory?.sharedSummary?.trim();
     const factionLines = this.factionMemory
       ? this.factionMemory.sharedWindow
@@ -234,19 +246,12 @@ ${systemConstraints ? `\n${systemConstraints.trim()}\n` : ''}
           .map(m => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content)))
       : [];
 
-    // We keep full summaries internally, but cap how much we feed back into the model context.
-    // This avoids runaway prompt growth while preserving full logs/debug output.
-    const privateSummaryForPrompt = this.privateSummary.trim()
-      ? this.truncate(this.privateSummary.trim(), this.memoryConfig.summaryMaxChars)
-      : '';
-    const factionSummaryForPrompt = factionSummary
-      ? this.truncate(factionSummary, this.memoryConfig.summaryMaxChars)
-      : '';
+    // Include notebook tail (already capped to 12k chars internally)
+    const notebookTail = this.privateNotebook.trim();
 
     const memoryBlock = [
-      privateSummaryForPrompt ? `Private running summary:\n${privateSummaryForPrompt}` : '',
-      privateFacts.length ? `Private facts:\n- ${privateFacts.join('\n- ')}` : '',
-      factionSummaryForPrompt ? `Faction shared summary:\n${factionSummaryForPrompt}` : '',
+      notebookTail ? `Private notebook (tail):\n${notebookTail}` : '',
+      factionSummary ? `Faction shared summary:\n${factionSummary}` : '',
       factionLines.length ? `Faction recent events:\n- ${factionLines.join('\n- ')}` : '',
       publicLines.length ? `Public recent events:\n- ${publicLines.join('\n- ')}` : '',
     ]
@@ -264,144 +269,19 @@ ${systemConstraints ? `\n${systemConstraints.trim()}\n` : ''}
     return msgs;
   }
 
-  private async ensureMemoryBudget(): Promise<void> {
-    await this.maybeSummarizePublicWindow();
-    await this.maybeSummarizeFactionWindow();
-  }
-
-  private async maybeSummarizePublicWindow(): Promise<void> {
+  private ensureMemoryBudget(): void {
+    // Cap public window - drop overflow instead of summarizing
     const limit = this.memoryConfig.publicWindowSize;
-    if (this.publicWindow.length <= limit) return;
-    if (this.isSummarizingPublic) return;
-
-    this.isSummarizingPublic = true;
-    try {
+    if (this.publicWindow.length > limit) {
       const overflowCount = this.publicWindow.length - limit;
-      const overflow = this.publicWindow.slice(0, overflowCount);
-      const keep = this.publicWindow.slice(overflowCount);
-      const overflowText = overflow
-        .map(m => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content)))
-        .join('\n');
-
-      const nextSummary = await this.summarizeIntoRunningSummary(this.privateSummary, overflowText);
-      // Keep full summary (no hard truncation). Prompt context is capped separately.
-      this.privateSummary = nextSummary;
-      this.publicWindow = keep;
-      if (this.logThoughts) {
-        logger.log({
-          type: 'THOUGHT',
-          player: this.config.name,
-          content: `Updated private summary (compressed ${overflowCount} public events): ${this.privateSummary}`,
-        });
-      }
-    } finally {
-      this.isSummarizingPublic = false;
+      this.publicWindow = this.publicWindow.slice(overflowCount);
     }
-  }
 
-  private async maybeSummarizeFactionWindow(): Promise<void> {
-    if (!this.factionMemory) return;
-    const limit = this.memoryConfig.publicWindowSize;
-    if (this.factionMemory.sharedWindow.length <= limit) return;
-    if (this.isSummarizingFaction) return;
-
-    this.isSummarizingFaction = true;
-    try {
+    // Cap faction window similarly
+    if (this.factionMemory && this.factionMemory.sharedWindow.length > limit) {
       const overflowCount = this.factionMemory.sharedWindow.length - limit;
-      const overflow = this.factionMemory.sharedWindow.slice(0, overflowCount);
-      const keep = this.factionMemory.sharedWindow.slice(overflowCount);
-      const overflowText = overflow
-        .map(m => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content)))
-        .join('\n');
-
-      const nextSummary = await this.summarizeIntoRunningSummary(this.factionMemory.sharedSummary, overflowText, {
-        faction: this.factionMemory.faction,
-      });
-      // Keep full summary (no hard truncation). Prompt context is capped separately.
-      this.factionMemory.sharedSummary = nextSummary;
-      this.factionMemory.sharedWindow = keep;
-      if (this.logThoughts) {
-        logger.log({
-          type: 'THOUGHT',
-          player: this.config.name,
-          content: `Updated faction summary (compressed ${overflowCount} faction events): ${this.factionMemory.sharedSummary}`,
-          metadata: { faction: this.factionMemory.faction },
-        });
-      }
-    } finally {
-      this.isSummarizingFaction = false;
+      this.factionMemory.sharedWindow = this.factionMemory.sharedWindow.slice(overflowCount);
     }
-  }
-
-  private async summarizeIntoRunningSummary(
-    existingSummary: string,
-    newEventsText: string,
-    opts?: { faction?: 'mafia' }
-  ): Promise<string> {
-    if (isDryRun()) {
-      const scope = opts?.faction ? `Faction scope: ${opts.faction}` : 'Scope: private player memory';
-      const prev = existingSummary?.trim();
-      const nextLines = newEventsText
-        .split('\n')
-        .map(l => l.trim())
-        .filter(Boolean)
-        .slice(-25)
-        .join('\n');
-      const combined = [
-        prev ? prev : '',
-        prev ? '' : `(${scope})`,
-        nextLines ? `Recent events:\n${nextLines}` : '',
-      ]
-        .filter(Boolean)
-        .join('\n');
-      return combined.trim();
-    }
-
-    const model = this.getModel();
-    const scope = opts?.faction ? `Faction scope: ${opts.faction}` : 'Scope: private player memory';
-
-    const result = await generateText({
-      model,
-      system: `
-You maintain a running memory summary for a Mafia game agent.
-${scope}
-
-Update the summary with the new events. Keep it factual, compact, and useful for future decisions.
-Do not include secrets you do not know. Do not invent events. Do not add probabilities.
-
-Prefer a structured summary that tracks:
-- Key public events (deaths, phase changes, vote outcomes).
-- Voting history and stated reasons (who voted whom; who pushed what narrative).
-- Player stances/reads (who suspects whom; who townleans whom; what changed).
-- Notable inconsistencies/contradictions (and who pointed them out).
-
-If this is faction scope (mafia):
-- Track team plans, agreed targets, and cover stories to maintain consistency.
-
-Return ONLY the updated summary text.
-      `.trim(),
-      messages: [
-        {
-          role: 'user',
-          content: `
-Existing summary:
-${existingSummary?.trim() || '(empty)'}
-
-New events to incorporate:
-${newEventsText.trim()}
-          `.trim(),
-        },
-      ],
-      temperature: 0.2,
-    });
-
-    return result.text.trim();
-  }
-
-  private truncate(text: string, maxChars: number): string {
-    if (!Number.isFinite(maxChars) || maxChars <= 0) return text;
-    if (text.length <= maxChars) return text;
-    return text.slice(0, Math.max(0, maxChars - 1)).trimEnd() + '…';
   }
 
   private tryParseJsonObject(text: string): unknown | null {
@@ -429,7 +309,7 @@ ${newEventsText.trim()}
     _history: CoreMessage[]
   ): Promise<string> {
     try {
-      await this.ensureMemoryBudget();
+      this.ensureMemoryBudget();
 
       if (isDryRun()) {
         const alive = parseAlivePlayersFromContext(systemContext);
@@ -438,8 +318,10 @@ ${newEventsText.trim()}
           ? pickDeterministicOption(otherAlive, `${this.config.name}|chat|${systemContext}`)
           : '';
 
-        // If this agent has a cop result in private facts, optionally surface it.
-        const lastInvestigation = [...this.privateFacts]
+        // Check notebook for cop result
+        const notebookLines = this.privateNotebook.split('\n');
+        const lastInvestigation = notebookLines
+          .slice()
           .reverse()
           .find(f => f.toLowerCase().includes('investigation result'));
         const copAccuse =
@@ -451,18 +333,19 @@ ${newEventsText.trim()}
           copAccuse && alive.includes(copAccuse)
             ? `I have strong info that ${copAccuse} is Mafia. We should focus there.`
             : target
-              ? `I’m not fully sure yet, but ${target} feels suspicious.`
-              : `No strong reads yet—let’s compare notes and look for inconsistencies.`;
+              ? `I'm not fully sure yet, but ${target} feels suspicious.`
+              : `No strong reads yet—let's compare notes and look for inconsistencies.`;
 
-        const thoughts = `dry-run: role=${this.currentRole}; suspect=${copAccuse ?? target ?? '(none)'}`;
-        if (this.logThoughts) {
+        const note = `dry-run: role=${this.currentRole}; suspect=${copAccuse ?? target ?? '(none)'}`;
+        if (note) {
+          this.appendToNotebook(note);
           logger.log({
             type: 'THOUGHT',
             player: this.config.name,
-            content: `Thought update: ${thoughts}`,
+            content: `NOTE: ${note}`,
+            metadata: { visibility: 'private', kind: 'note' },
           });
         }
-        this.observePrivateEvent(`Thought update: ${thoughts}`);
         return pub;
       }
 
@@ -470,9 +353,11 @@ ${newEventsText.trim()}
 
       const systemPrompt = this.buildSystemPrompt(`
 Output format:
-- Return a single JSON object: {"public": string, "thoughts": string}
+- Return a single JSON object: {"public": string, "note": string}
 - "public" is what you say aloud in the town square.
-- "thoughts" is a short private update (max 2 sentences) to help future decisions.
+- "note" is a concise one-line private update (max ${this.noteMaxChars} chars) to help future decisions. Keep it brief and factual.
+- Your "note" will be appended to your private notebook and shown back to you in future turns under "Private notebook (tail)".
+- If nothing changed in your internal state, use an empty string "" for "note".
 - Do NOT reveal your role or hidden system info in "public".
       `);
 
@@ -491,18 +376,25 @@ Output format:
 
       const parsed = this.tryParseJsonObject(result.text);
       if (parsed && typeof parsed === 'object' && parsed !== null) {
-        const obj = parsed as { public?: unknown; thoughts?: unknown };
+        const obj = parsed as { public?: unknown; note?: unknown };
         const pub = typeof obj.public === 'string' ? obj.public.trim() : null;
-        const thoughts = typeof obj.thoughts === 'string' ? obj.thoughts.trim() : null;
+        const note = typeof obj.note === 'string' ? obj.note.trim() : null;
 
-        if (this.logThoughts && thoughts) {
-          logger.log({
-            type: 'THOUGHT',
-            player: this.config.name,
-            content: `Thought update: ${thoughts}`,
-          });
+        // Process note: enforce one-line, max length, then append to notebook
+        if (note) {
+          const normalizedNote = note.replace(/\n/g, ' ').trim();
+          if (normalizedNote && normalizedNote.length <= this.noteMaxChars) {
+            this.appendToNotebook(normalizedNote);
+            // Emit as THOUGHT entry for UI consumption
+            logger.log({
+              type: 'THOUGHT',
+              player: this.config.name,
+              content: `NOTE: ${normalizedNote}`,
+              metadata: { visibility: 'private', kind: 'note' },
+            });
+          }
         }
-        if (thoughts) this.observePrivateEvent(`Thought update: ${thoughts}`);
+
         if (pub) return pub;
       }
 
@@ -524,20 +416,21 @@ Output format:
     _history: CoreMessage[] = []
   ): Promise<string> {
     try {
-      await this.ensureMemoryBudget();
+      this.ensureMemoryBudget();
 
       if (isDryRun()) {
         // Deterministic choice so development runs are repeatable.
         const choice = pickDeterministicOption(options, `${this.config.name}|decision|${context}`);
-        const rationale = `dry-run deterministic pick: ${choice}`;
-        if (this.logThoughts) {
+        const note = `dry-run decision: ${choice}`;
+        if (note) {
+          this.appendToNotebook(note);
           logger.log({
             type: 'THOUGHT',
             player: this.config.name,
-            content: `Decision rationale (${choice}): ${rationale}`,
+            content: `NOTE: ${note}`,
+            metadata: { visibility: 'private', kind: 'note' },
           });
         }
-        this.observePrivateEvent(`Decision rationale (${choice}): ${rationale}`);
         return choice || options[0]!;
       }
 
@@ -570,14 +463,8 @@ Output format:
         const rationale = typeof obj.rationale === 'string' ? obj.rationale.trim() : '';
         const matched = this.matchOption(choice, options) ?? options[0];
 
-        if (this.logThoughts && rationale) {
-          logger.log({
-            type: 'THOUGHT',
-            player: this.config.name,
-            content: `Decision rationale (${matched}): ${rationale}`,
-          });
-        }
-        if (rationale) this.observePrivateEvent(`Decision rationale (${matched}): ${rationale}`);
+        // Optionally append decision rationale as a note (but don't force it)
+        // The main notebook updates come from response notes
         return matched;
       }
 

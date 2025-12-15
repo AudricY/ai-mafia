@@ -68,7 +68,6 @@ export class GameEngine {
         gameRules: config.system_prompt,
         memory: {
           publicWindowSize: config.memory_window_size,
-          summaryMaxChars: config.memory_summary_max_chars,
         },
         logThoughts: config.log_thoughts,
       });
@@ -143,7 +142,7 @@ export class GameEngine {
     return entries.map(([k, v]) => `${k}: ${v}`).join(', ');
   }
 
-  killPlayer(name: string, revealedRole?: string | null) {
+  killPlayer(name: string, revealedRole?: Role | null) {
     if (this.state.players[name]) {
       this.state.players[name].isAlive = false;
       const roleToReveal = revealedRole !== undefined ? revealedRole : this.state.players[name].role;
@@ -152,7 +151,7 @@ export class GameEngine {
           type: 'DEATH',
           player: name,
           content: `has died. Their role is unknown.`,
-          metadata: { role: null },
+          metadata: { role: undefined },
         });
       } else {
         this.recordPublic({

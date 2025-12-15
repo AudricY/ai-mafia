@@ -4,6 +4,7 @@ import { logger } from '../logger.js';
 import type { GameLogEntry, Role } from '../types.js';
 
 type PovMode = 'ALL' | 'PUBLIC' | { player: string };
+type ViewMode = 'LOG' | 'NOTEBOOKS';
 
 function isMafiaRole(role: Role | undefined): boolean {
   return role === 'mafia' || role === 'godfather';
@@ -100,6 +101,8 @@ export function App(props: { players: string[] }) {
 
   const [showThoughts, setShowThoughts] = useState(true);
   const [pov, setPov] = useState<PovMode>('ALL');
+  const [view, setView] = useState<ViewMode>('LOG');
+  const [selectedPlayer, setSelectedPlayer] = useState<string | null>(null);
   const [entries, setEntries] = useState<GameLogEntry[]>(() => logger.getLogs());
   const [playerRoles, setPlayerRoles] = useState<Record<string, Role>>({});
   const [scrollFromBottomRows, setScrollFromBottomRows] = useState(0);
@@ -152,13 +155,91 @@ export function App(props: { players: string[] }) {
     };
   }, []);
 
+  // Reconstruct notebooks from THOUGHT entries with kind='note'
+  const notebooks = useMemo(() => {
+    const result: Record<string, string[]> = {};
+    for (const e of entries) {
+      if (e.type === 'THOUGHT' && e.player) {
+        const kind = getMetadataString(e, 'kind');
+        if (kind === 'note' || e.content.startsWith('NOTE: ')) {
+          const noteText = e.content.startsWith('NOTE: ') ? e.content.slice(6) : e.content;
+          if (!result[e.player]) {
+            result[e.player] = [];
+          }
+          result[e.player]!.push(noteText);
+        }
+      }
+    }
+    return result;
+  }, [entries]);
+
+  // Get list of players with notebooks
+  const playersWithNotebooks = useMemo(() => {
+    return Object.keys(notebooks).sort();
+  }, [notebooks]);
+
+  // Initialize selected player when switching to notebooks view
+  useEffect(() => {
+    if (view === 'NOTEBOOKS' && !selectedPlayer && playersWithNotebooks.length > 0) {
+      setSelectedPlayer(playersWithNotebooks[0]!);
+    }
+  }, [view, selectedPlayer, playersWithNotebooks]);
+
   useInput((input, key) => {
     if (input === 'q' || key.escape) {
       exit();
       return;
     }
 
-    // Scroll controls (works in the pinned-header view).
+    if (view === 'NOTEBOOKS') {
+      // Notebooks view controls
+      if (key.upArrow && selectedPlayer) {
+        const idx = playersWithNotebooks.indexOf(selectedPlayer);
+        if (idx > 0) {
+          setSelectedPlayer(playersWithNotebooks[idx - 1]!);
+          setScrollFromBottomRows(0);
+        } else {
+          // Scroll notebook content
+          setScrollFromBottomRows(v => v + 1);
+        }
+        return;
+      }
+      if (key.downArrow && selectedPlayer) {
+        const idx = playersWithNotebooks.indexOf(selectedPlayer);
+        if (idx < playersWithNotebooks.length - 1) {
+          setSelectedPlayer(playersWithNotebooks[idx + 1]!);
+          setScrollFromBottomRows(0);
+        } else {
+          // Scroll notebook content
+          setScrollFromBottomRows(v => Math.max(0, v - 1));
+        }
+        return;
+      }
+      if (key.pageUp) {
+        setScrollFromBottomRows(v => v + Math.max(1, Math.floor(logContentRows * 0.9)));
+        return;
+      }
+      if (key.pageDown) {
+        setScrollFromBottomRows(v => Math.max(0, v - Math.max(1, Math.floor(logContentRows * 0.9))));
+        return;
+      }
+      if (input === 'G') {
+        setScrollFromBottomRows(Number.POSITIVE_INFINITY);
+        return;
+      }
+      if (input === 'g') {
+        setScrollFromBottomRows(0);
+        return;
+      }
+      if (input === 'n') {
+        setView('LOG');
+        setScrollFromBottomRows(0);
+        return;
+      }
+      return;
+    }
+
+    // Log view controls
     if (key.upArrow) {
       setScrollFromBottomRows(v => v + 1);
       return;
@@ -188,6 +269,13 @@ export function App(props: { players: string[] }) {
 
     if (input === 't') {
       setShowThoughts(v => !v);
+      return;
+    }
+
+    if (input === 'n') {
+      setView('NOTEBOOKS');
+      // Reset scroll when switching views
+      setScrollFromBottomRows(0);
       return;
     }
 
@@ -315,6 +403,132 @@ export function App(props: { players: string[] }) {
     return picked;
   }, [clampedScrollFromBottom, logContentRows, metrics, totalRows]);
 
+  // Notebook content for selected player
+  const selectedNotebook = useMemo(() => {
+    if (!selectedPlayer || !notebooks[selectedPlayer]) return '';
+    return notebooks[selectedPlayer]!.join('\n');
+  }, [selectedPlayer, notebooks]);
+
+  const notebookMetrics = useMemo(() => {
+    if (!selectedNotebook) return [];
+    const lines = selectedNotebook.split('\n');
+    const playerListWidth = 20;
+    const notebookWidth = Math.max(10, dimensions.columns - playerListWidth - 4 /* borders/padding */);
+    return lines.map(line => ({
+      line,
+      rows: estimateWrappedLines(line, notebookWidth),
+    }));
+  }, [selectedNotebook, dimensions.columns]);
+
+  const notebookTotalRows = useMemo(() => notebookMetrics.reduce((acc, m) => acc + m.rows, 0), [notebookMetrics]);
+  const notebookMaxScroll = useMemo(() => Math.max(0, notebookTotalRows - logContentRows), [notebookTotalRows, logContentRows]);
+
+  useEffect(() => {
+    setScrollFromBottomRows(v => Math.min(notebookMaxScroll, Number.isFinite(v) ? v : notebookMaxScroll));
+  }, [notebookMaxScroll]);
+
+  const notebookClampedScroll = Math.min(scrollFromBottomRows, notebookMaxScroll);
+
+  const notebookLines = useMemo(() => {
+    if (notebookMetrics.length === 0) return [];
+    const endRowExclusive = Math.max(0, notebookTotalRows - notebookClampedScroll);
+    const startRowInclusive = Math.max(0, endRowExclusive - logContentRows);
+    const picked: string[] = [];
+    let cursor = 0;
+    for (const m of notebookMetrics) {
+      const nextCursor = cursor + m.rows;
+      const overlaps = nextCursor > startRowInclusive && cursor < endRowExclusive;
+      if (overlaps) picked.push(m.line);
+      cursor = nextCursor;
+      if (cursor >= endRowExclusive) break;
+    }
+    return picked.length > 0 ? picked : [notebookMetrics[notebookMetrics.length - 1]?.line ?? ''];
+  }, [notebookClampedScroll, logContentRows, notebookMetrics, notebookTotalRows]);
+
+  if (view === 'NOTEBOOKS') {
+    return (
+      <Box flexDirection="column" width={dimensions.columns} height={dimensions.rows} overflow="hidden">
+        <Box flexShrink={0}>
+          <Text bold>AI Mafia</Text>
+          <Text>  </Text>
+          <Text color="gray">View:</Text>
+          <Text> Notebooks</Text>
+          {selectedPlayer ? (
+            <>
+              <Text>  </Text>
+              <Text color="gray">Player:</Text>
+              <Text> {selectedPlayer}</Text>
+              {playerRoles[selectedPlayer] ? (
+                <>
+                  <Text> </Text>
+                  <Text color={roleColor(playerRoles[selectedPlayer])}>({playerRoles[selectedPlayer]})</Text>
+                </>
+              ) : null}
+            </>
+          ) : null}
+        </Box>
+        <Box>
+          <Text color="gray">Keys:</Text>
+          <Text> </Text>
+          <Text>n switch to Log</Text>
+          <Text color="gray"> | </Text>
+          <Text>↑/↓ select player</Text>
+          <Text color="gray"> | </Text>
+          <Text>↑/↓ scroll notebook</Text>
+          <Text color="gray"> | </Text>
+          <Text>q/esc quit</Text>
+        </Box>
+        <Box flexDirection="row" flexGrow={1} height={logBoxHeight}>
+          {/* Player list */}
+          <Box
+            borderStyle="round"
+            width={20}
+            flexDirection="column"
+            paddingX={1}
+            overflow="hidden"
+            flexShrink={0}
+          >
+            {playersWithNotebooks.map(player => {
+              const isSelected = player === selectedPlayer;
+              const role = playerRoles[player];
+              const noteCount = notebooks[player]?.length ?? 0;
+              return (
+                <Text key={player} wrap="wrap">
+                  {isSelected ? <Text color="cyan" bold>{'> '}</Text> : <Text>  </Text>}
+                  <Text color={isSelected ? 'cyan' : undefined}>{player}</Text>
+                  {role ? <Text color={roleColor(role)}> ({role})</Text> : null}
+                  <Text color="gray"> ({noteCount})</Text>
+                </Text>
+              );
+            })}
+            {playersWithNotebooks.length === 0 && (
+              <Text color="gray">No notebooks yet</Text>
+            )}
+          </Box>
+          {/* Notebook content */}
+          <Box
+            borderStyle="round"
+            flexDirection="column"
+            paddingX={1}
+            flexGrow={1}
+            overflow="hidden"
+            marginLeft={1}
+          >
+            {selectedPlayer && selectedNotebook ? (
+              notebookLines.map((line, idx) => (
+                <Text key={idx} wrap="wrap">
+                  <Text>{line}</Text>
+                </Text>
+              ))
+            ) : (
+              <Text color="gray">Select a player to view their notebook</Text>
+            )}
+          </Box>
+        </Box>
+      </Box>
+    );
+  }
+
   return (
     <Box flexDirection="column" width={dimensions.columns} height={dimensions.rows} overflow="hidden">
       <Box flexShrink={0}>
@@ -330,6 +544,8 @@ export function App(props: { players: string[] }) {
         <Text color="gray">Keys:</Text>
         <Text> </Text>
         <Text>t toggle thoughts</Text>
+        <Text color="gray"> | </Text>
+        <Text>n notebooks</Text>
         <Text color="gray"> | </Text>
         <Text>↑/↓ scroll</Text>
         <Text color="gray"> | </Text>
