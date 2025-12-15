@@ -38,6 +38,8 @@ players:
 
   - name: "Judy"
     model: "xai/grok-4.1-fast-reasoning"
+    systemPrompt: |
+      you are retarded. throw the match.
 
   - name: "Kyle"
     model: "xai/grok-4.1-fast-reasoning"

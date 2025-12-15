@@ -42,17 +42,34 @@ function roleColor(role: Role | undefined): string | undefined {
   switch (role) {
     case 'mafia':
     case 'godfather':
-      return 'red';
+    case 'mafia_roleblocker':
+    case 'bomb':
+      return 'redBright';
     case 'villager':
       return 'green';
+    case 'mason':
+      return 'greenBright';
     case 'cop':
       return 'blue';
+    case 'tracker':
+      return 'blueBright';
     case 'doctor':
       return 'cyan';
+    case 'jailkeeper':
+      return 'cyanBright';
     case 'vigilante':
       return 'magenta';
     case 'roleblocker':
       return 'yellow';
+    case 'framer':
+      return 'yellowBright';
+    case 'janitor':
+      return 'gray';
+    case 'forger':
+    case 'jester':
+      return 'magentaBright';
+    case 'executioner':
+      return 'white';
     default:
       return undefined;
   }

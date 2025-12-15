@@ -6,12 +6,22 @@ import { eventBus } from './events/index.js';
 
 const ROLE_COLORS: Record<string, (text: string) => string> = {
   mafia: chalk.red,
-  godfather: chalk.red.bold,
+  godfather: chalk.redBright,
+  mafia_roleblocker: chalk.redBright,
   villager: chalk.green,
   cop: chalk.blue,
   doctor: chalk.cyan,
   vigilante: chalk.magenta,
   roleblocker: chalk.yellow,
+  tracker: chalk.blueBright,
+  jailkeeper: chalk.cyanBright,
+  mason: chalk.greenBright,
+  bomb: chalk.redBright,
+  framer: chalk.yellowBright,
+  janitor: chalk.gray,
+  forger: chalk.magentaBright,
+  jester: chalk.magentaBright,
+  executioner: chalk.white,
 };
 
 const TYPE_COLORS: Record<LogType, (text: string) => string> = {
@@ -151,7 +161,8 @@ export class GameLogger {
 
     // Highlight roles in content
     let content = entry.content;
-    const rolePattern = /\b(villager|mafia|cop|doctor|vigilante|roleblocker|godfather)s?\b/gi;
+    const rolePattern =
+      /\b(villager|mafia|cop|doctor|vigilante|roleblocker|godfather|tracker|jailkeeper|mason|bomb|mafia_roleblocker|framer|janitor|forger|jester|executioner)s?\b/gi;
     content = content.replace(rolePattern, (match) => {
       const lower = match.toLowerCase().replace(/s$/, '') as string; // simple singularization
       const colorFn = ROLE_COLORS[lower];
