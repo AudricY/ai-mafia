@@ -337,7 +337,7 @@ ${systemConstraints ? `\n${systemConstraints.trim()}\n` : ''}
               : `No strong reads yet—let's compare notes and look for inconsistencies.`;
 
         const note = `dry-run: role=${this.currentRole}; suspect=${copAccuse ?? target ?? '(none)'}`;
-        if (note) {
+        if (note && this.logThoughts) {
           this.appendToNotebook(note);
           logger.log({
             type: 'THOUGHT',
@@ -422,7 +422,7 @@ Output format:
         // Deterministic choice so development runs are repeatable.
         const choice = pickDeterministicOption(options, `${this.config.name}|decision|${context}`);
         const note = `dry-run decision: ${choice}`;
-        if (note) {
+        if (note && this.logThoughts) {
           this.appendToNotebook(note);
           logger.log({
             type: 'THOUGHT',
@@ -462,6 +462,22 @@ Output format:
         const choice = typeof obj.choice === 'string' ? obj.choice.trim() : '';
         const rationale = typeof obj.rationale === 'string' ? obj.rationale.trim() : '';
         const matched = this.matchOption(choice, options) ?? options[0];
+
+        // Log rationale as private THOUGHT when logThoughts is enabled
+        if (this.logThoughts && rationale) {
+          const contextPreview = context.length > 100 ? context.substring(0, 100) + '...' : context;
+          logger.log({
+            type: 'THOUGHT',
+            player: this.config.name,
+            content: rationale,
+            metadata: {
+              visibility: 'private',
+              kind: 'decision_rationale',
+              choice: matched,
+              context: contextPreview,
+            },
+          });
+        }
 
         // Optionally append decision rationale as a note (but don't force it)
         // The main notebook updates come from response notes

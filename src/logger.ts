@@ -124,6 +124,14 @@ export class GameLogger {
     // Console output for visibility
     if (!this.consoleOutputEnabled) return;
 
+    // Skip THOUGHT entries unless explicitly enabled via env var
+    if (entry.type === 'THOUGHT') {
+      const printThoughts = (process.env.AI_MAFIA_PRINT_THOUGHTS ?? '').toLowerCase().trim();
+      if (printThoughts !== '1' && printThoughts !== 'true' && printThoughts !== 'yes' && printThoughts !== 'on') {
+        return;
+      }
+    }
+
     const timeStr = entry.timestamp.split('T')[1]?.split('.')[0] ?? entry.timestamp;
     const prefix = chalk.gray(`[${timeStr}]`);
 
