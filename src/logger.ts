@@ -41,6 +41,7 @@ export class GameLogger {
   private logs: GameLogEntry[] = [];
   private knownPlayers: Set<string> = new Set();
   private consoleOutputEnabled = true;
+  private persistenceEnabled = true;
   private subscribers: Set<(entry: GameLogEntry) => void> = new Set();
   private playerRoles: Map<string, Role> = new Map();
 
@@ -57,6 +58,18 @@ export class GameLogger {
     eventBus.subscribe((entry) => {
       this.handleEntry(entry);
     });
+  }
+
+  /**
+   * Enable or disable writing structured logs / transcripts to disk.
+   *
+   * This is primarily used for dry-run mode so that development runs don't
+   * accumulate `logs/game-*.json` and `logs/transcript-*.txt` files.
+   *
+   * Console output and in-memory logs remain unaffected.
+   */
+  setPersistenceEnabled(enabled: boolean) {
+    this.persistenceEnabled = enabled;
   }
 
   setKnownPlayers(names: string[]) {
@@ -191,6 +204,7 @@ export class GameLogger {
   }
 
   private flush() {
+    if (!this.persistenceEnabled) return;
     fs.writeFileSync(this.logFile, JSON.stringify(this.logs, null, 2));
     fs.writeFileSync(this.transcriptFile, this.buildTranscriptText(this.logs));
   }

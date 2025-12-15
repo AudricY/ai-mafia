@@ -29,8 +29,9 @@ Alive players: ${aliveNames.join(', ')}.
 Choose ONE player to track tonight.
 Guidance (soft):
 - Track players you suspect might be performing night actions (power roles, suspected mafia).
-- You will learn who they visited (if anyone) - successful visits only.
-- If the tracked player was blocked or did nothing, you'll see "no visit".`,
+- You will learn who they visited (if anyone) – successful visits only.
+- IMPORTANT: If your track succeeds and the target does NOT make any successful visit, your result will clearly say that you saw them visit NO ONE (this is still a SUCCESSFUL track).
+- If YOU are blocked, you will instead receive an explicit message like "You were blocked and could not track anyone!" – do NOT describe that as a normal "no visit" result.`,
       validTargets,
       [],
       systemAddendum ?? undefined

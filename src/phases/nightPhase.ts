@@ -39,8 +39,8 @@ export class NightPhase {
     for (const track of resolved.trackerResults) {
       const resultText =
         track.visited === null
-          ? `Tracking result (night ${engine.state.round}): ${track.target} did not make a successful visit (they may have stayed home or been blocked).`
-          : `Tracking result (night ${engine.state.round}): ${track.target} visited ${track.visited}.`;
+          ? `Tracking result (night ${engine.state.round}): You successfully tracked ${track.target}. You saw them visit NO ONE (they either stayed home or their action was blocked).`
+          : `Tracking result (night ${engine.state.round}): You successfully tracked ${track.target}. You saw them visit ${track.visited}.`;
       engine.agents[track.actor]?.observePrivateEvent(resultText);
       logger.log({
         type: 'ACTION',
@@ -67,7 +67,7 @@ export class NightPhase {
         } else if (action.kind === 'frame') {
           message = `You were blocked and could not frame anyone!`;
         } else if (action.kind === 'track') {
-          message = `You were blocked and could not track anyone!`;
+          message = `You were blocked and could not track anyone! You gathered NO INFORMATION tonight.`;
         } else if (action.kind === 'clean') {
           message = `You were blocked and could not clean!`;
         } else if (action.kind === 'forge') {
@@ -147,3 +147,4 @@ export class NightPhase {
     }
   }
 }
+

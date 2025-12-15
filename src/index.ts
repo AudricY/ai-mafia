@@ -76,6 +76,9 @@ async function main() {
   }
 
   if (args.dryRun) {
+    // In dry-run mode, we still want console output for visibility, but we
+    // don't want to persist JSON / transcript logs to disk.
+    logger.setPersistenceEnabled(false);
     process.env.AI_MAFIA_DRY_RUN = '1';
     if (args.dryRunSeed !== undefined) process.env.AI_MAFIA_DRY_RUN_SEED = String(args.dryRunSeed);
     logger.log({
