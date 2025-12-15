@@ -33,6 +33,9 @@ players:
   - name: "Henry"
     model: "xai/grok-4.1-fast-reasoning"
 
+  - name: "Ivy"
+    model: "xai/grok-4.1-fast-reasoning"
+
 roles:
   Alice: godfather
   Bob: mafia_roleblocker
@@ -42,4 +45,5 @@ roles:
   Frank: roleblocker
   Grace: tracker
   Henry: villager
+  Ivy: executioner
 

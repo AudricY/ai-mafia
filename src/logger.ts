@@ -27,6 +27,7 @@ const TYPE_COLORS: Record<LogType, (text: string) => string> = {
 
 export class GameLogger {
   private logFile: string;
+  private transcriptFile: string;
   private logs: GameLogEntry[] = [];
   private knownPlayers: Set<string> = new Set();
   private consoleOutputEnabled = true;
@@ -40,6 +41,7 @@ export class GameLogger {
       fs.mkdirSync(logDir);
     }
     this.logFile = path.join(logDir, `game-${timestamp}.json`);
+    this.transcriptFile = path.join(logDir, `transcript-${timestamp}.txt`);
 
     // The logger subscribes to the global event bus and persists/prints entries.
     eventBus.subscribe((entry) => {
@@ -179,6 +181,58 @@ export class GameLogger {
 
   private flush() {
     fs.writeFileSync(this.logFile, JSON.stringify(this.logs, null, 2));
+    fs.writeFileSync(this.transcriptFile, this.buildTranscriptText(this.logs));
+  }
+
+  private buildTranscriptText(entries: readonly GameLogEntry[]): string {
+    const lines: string[] = [];
+
+    for (const entry of entries) {
+      // Prefer explicit visibility if present. If absent, fall back to a conservative
+      // include-list so we don't leak private events (THOUGHT, FACTION_CHAT, etc).
+      const visibility = entry.metadata?.visibility;
+      const isExplicitlyPublic = visibility === 'public';
+      const isAllowedType =
+        entry.type === 'SYSTEM' ||
+        entry.type === 'CHAT' ||
+        entry.type === 'VOTE' ||
+        entry.type === 'DEATH' ||
+        entry.type === 'WIN';
+
+      if (!isExplicitlyPublic && !isAllowedType) continue;
+      if (entry.type === 'THOUGHT' || entry.type === 'FACTION_CHAT') continue;
+
+      if (entry.type === 'SYSTEM') {
+        lines.push(`[SYSTEM] ${entry.content}`);
+        continue;
+      }
+
+      if (entry.type === 'CHAT') {
+        if (entry.player) lines.push(`${entry.player}: ${entry.content}`);
+        else lines.push(`[CHAT] ${entry.content}`);
+        continue;
+      }
+
+      if (entry.type === 'VOTE') {
+        lines.push(`[VOTE] ${entry.player ? `${entry.player} ` : ''}${entry.content}`.trimEnd());
+        continue;
+      }
+
+      if (entry.type === 'DEATH') {
+        lines.push(`[DEATH] ${entry.player ? `${entry.player} ` : ''}${entry.content}`.trimEnd());
+        continue;
+      }
+
+      if (entry.type === 'WIN') {
+        lines.push(`[WIN] ${entry.content}`);
+        continue;
+      }
+
+      // Fallback formatting (should be rare with current filters)
+      lines.push(`[${entry.type}] ${entry.player ? `${entry.player}: ` : ''}${entry.content}`);
+    }
+
+    return `${lines.join('\n')}\n`;
   }
 }
 
