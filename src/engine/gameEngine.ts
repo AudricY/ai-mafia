@@ -89,6 +89,8 @@ export class GameEngine {
       turn: 0,
       players,
       history: [],
+      neutralWinners: [],
+      executionerTargetByPlayer: {},
     };
 
     this.assignRoles();
@@ -167,6 +169,11 @@ export class GameEngine {
   }
 
   checkWin(): boolean {
+    // If Jester already won (instant win), don't overwrite it
+    if (this.state.winners === 'jester') {
+      return true;
+    }
+
     const alive = this.getAlivePlayers();
     const mafiaCount = alive.filter(
       p =>
@@ -202,7 +209,17 @@ export class GameEngine {
     }
 
     if (this.state.winners) {
-      this.recordPublic({ type: 'WIN', content: `Game Over! Winners: ${this.state.winners}` });
+      let winMessage = '';
+      if (this.state.winners === 'jester') {
+        const jesterWinner = this.state.neutralWinners?.[0] ?? 'Unknown';
+        winMessage = `Game Over! ${jesterWinner} (Jester) wins!`;
+      } else {
+        winMessage = `Game Over! Winners: ${this.state.winners}`;
+        if (this.state.neutralWinners && this.state.neutralWinners.length > 0) {
+          winMessage += ` (Neutral co-winners: ${this.state.neutralWinners.join(', ')})`;
+        }
+      }
+      this.recordPublic({ type: 'WIN', content: winMessage });
       this.state.phase = 'game_over';
       
       // Final role reveal
@@ -421,6 +438,54 @@ export class GameEngine {
           `You are a Mason. The other Mason(s) are: ${otherMasons.join(', ')}. You know they are town-aligned.`
         );
       });
+    }
+
+    // Handle Executioners: assign targets
+    const executioners = Object.values(this.state.players).filter(p => p.role === 'executioner');
+    if (executioners.length > 0) {
+      const seed =
+        this.config.role_seed ??
+        (process.env.AI_MAFIA_DRY_RUN_SEED ? Number(process.env.AI_MAFIA_DRY_RUN_SEED) : undefined) ??
+        Date.now();
+      const rng = mulberry32(Number.isFinite(seed) ? seed : Date.now());
+      
+      // Valid targets: non-mafia, non-executioner, non-jester, alive players
+      const validTargets = Object.values(this.state.players).filter(
+        p =>
+          p.isAlive &&
+          p.role !== 'mafia' &&
+          p.role !== 'godfather' &&
+          p.role !== 'mafia_roleblocker' &&
+          p.role !== 'framer' &&
+          p.role !== 'janitor' &&
+          p.role !== 'forger' &&
+          p.role !== 'executioner' &&
+          p.role !== 'jester'
+      );
+
+      for (const exe of executioners) {
+        if (validTargets.length === 0) {
+          // Edge case: no valid targets (shouldn't happen in normal games)
+          this.agents[exe.config.name]?.observePrivateEvent(
+            'You are an Executioner, but there are no valid targets. You will become a Jester if any player dies at night.'
+          );
+          continue;
+        }
+
+        const targetIndex = Math.floor(rng() * validTargets.length);
+        const target = validTargets[targetIndex]!;
+        this.state.executionerTargetByPlayer![exe.config.name] = target.config.name;
+        
+        this.agents[exe.config.name]?.observePrivateEvent(
+          `You are an Executioner. Your target is ${target.config.name}. If ${target.config.name} is eliminated by day vote, you win. If ${target.config.name} dies at night, you become the Jester.`
+        );
+        
+        logger.log({
+          type: 'SYSTEM',
+          content: `Executioner ${exe.config.name} assigned target ${target.config.name}`,
+          metadata: { role: 'executioner', player: exe.config.name, target: target.config.name, visibility: 'private' },
+        });
+      }
     }
 
     this.roleCounts = this.computeRoleCountsFromState();

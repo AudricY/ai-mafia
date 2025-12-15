@@ -48,7 +48,44 @@ export class DayVotingPhase {
         type: 'SYSTEM',
         content: `The town has voted to eliminate ${candidate} with ${maxVotes} votes.`,
       });
+      
+      const eliminatedPlayer = engine.state.players[candidate];
+      const eliminatedRole = eliminatedPlayer?.role;
+      
+      // Check for Jester instant win
+      if (eliminatedRole === 'jester') {
+        engine.killPlayer(candidate);
+        engine.state.winners = 'jester';
+        engine.state.neutralWinners = [candidate];
+        engine.recordPublic({
+          type: 'WIN',
+          content: `Game Over! ${candidate} (Jester) wins by being eliminated!`,
+        });
+        engine.state.phase = 'game_over';
+        return;
+      }
+      
       engine.killPlayer(candidate);
+      
+      // Check for Executioner co-win
+      if (engine.state.executionerTargetByPlayer) {
+        for (const [exeName, targetName] of Object.entries(engine.state.executionerTargetByPlayer)) {
+          if (targetName === candidate) {
+            const exePlayer = engine.state.players[exeName];
+            if (exePlayer && exePlayer.isAlive) {
+              if (!engine.state.neutralWinners) {
+                engine.state.neutralWinners = [];
+              }
+              if (!engine.state.neutralWinners.includes(exeName)) {
+                engine.state.neutralWinners.push(exeName);
+              }
+              engine.agents[exeName]?.observePrivateEvent(
+                `Your target ${candidate} was eliminated by day vote. You have achieved your win condition!`
+              );
+            }
+          }
+        }
+      }
     } else {
       engine.recordPublic({
         type: 'SYSTEM',

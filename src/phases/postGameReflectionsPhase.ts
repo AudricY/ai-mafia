@@ -49,10 +49,31 @@ export class PostGameReflectionsPhase {
       const role = player.role;
       const isAlive = player.isAlive;
       const winners = engine.state.winners;
-      const won = (winners === 'mafia' && (role === 'mafia' || role === 'godfather' || role === 'mafia_roleblocker' || role === 'framer' || role === 'janitor' || role === 'forger')) ||
-                   (winners === 'villagers' && role !== 'mafia' && role !== 'godfather' && role !== 'mafia_roleblocker' && role !== 'framer' && role !== 'janitor' && role !== 'forger');
+      
+      // Determine if this player won
+      let won = false;
+      let winDescription = '';
+      
+      if (winners === 'jester') {
+        won = engine.state.neutralWinners?.includes(name) ?? false;
+        winDescription = won ? `${name} (Jester) won` : 'Jester won';
+      } else if (winners === 'mafia') {
+        const isMafiaRole = role === 'mafia' || role === 'godfather' || role === 'mafia_roleblocker' || role === 'framer' || role === 'janitor' || role === 'forger';
+        won = isMafiaRole || (engine.state.neutralWinners?.includes(name) ?? false);
+        winDescription = 'Mafia won';
+        if (engine.state.neutralWinners && engine.state.neutralWinners.length > 0) {
+          winDescription += ` (Neutral co-winners: ${engine.state.neutralWinners.join(', ')})`;
+        }
+      } else if (winners === 'villagers') {
+        const isMafiaRole = role === 'mafia' || role === 'godfather' || role === 'mafia_roleblocker' || role === 'framer' || role === 'janitor' || role === 'forger';
+        won = !isMafiaRole || (engine.state.neutralWinners?.includes(name) ?? false);
+        winDescription = 'Villagers won';
+        if (engine.state.neutralWinners && engine.state.neutralWinners.length > 0) {
+          winDescription += ` (Neutral co-winners: ${engine.state.neutralWinners.join(', ')})`;
+        }
+      }
 
-      const prompt = `The game has ended. ${winners === 'mafia' ? 'Mafia' : 'Villagers'} won.
+      const prompt = `The game has ended. ${winDescription}.
 
 Final role reveal:
 ${roleSummary.join('\n')}
@@ -60,7 +81,7 @@ ${roleSummary.join('\n')}
 Game transcript:
 ${transcript}
 
-Your role was ${role}. You ${isAlive ? 'survived' : 'died'} during the game. Your faction ${won ? 'won' : 'lost'}.
+Your role was ${role}. You ${isAlive ? 'survived' : 'died'} during the game. You ${won ? 'won' : 'lost'}.
 
 Give a brief post-game reflection (2-3 sentences). You can now discuss your true role, what you were thinking during key moments, what surprised you, or what you'd do differently. Keep it concise and conversational, like IRL post-game chat.`;
 

@@ -18,6 +18,8 @@ export const RoleSchema = z.enum([
   'framer',
   'janitor',
   'forger',
+  'jester',
+  'executioner',
 ]);
 export type Role = z.infer<typeof RoleSchema>;
 
@@ -67,7 +69,9 @@ export interface GameState {
   turn: number; // Discussion turn within a day
   players: Record<string, PlayerState>;
   history: GameLogEntry[];
-  winners?: 'mafia' | 'villagers';
+  winners?: 'mafia' | 'villagers' | 'jester';
+  neutralWinners?: string[];
+  executionerTargetByPlayer?: Record<string, string>;
   abortReason?: string;
 }
 

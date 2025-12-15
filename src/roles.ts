@@ -1,6 +1,6 @@
 import type { Role } from './types.js';
 
-export type RoleTeam = 'town' | 'mafia';
+export type RoleTeam = 'town' | 'mafia' | 'neutral';
 
 export interface RoleDefinition {
   role: Role;
@@ -114,6 +114,20 @@ export const ROLE_DEFINITIONS: Record<Role, RoleDefinition> = {
     abilities: ['Night: choose a fake role to reveal if a Mafia kill occurs.'],
     notes: ['If used, the victim\'s role reveal shows the forged role instead of their real role.'],
   },
+  jester: {
+    role: 'jester',
+    team: 'neutral',
+    summary: 'Wins if eliminated by day vote. Game ends immediately.',
+    abilities: ['No night action.'],
+    notes: ['If you are eliminated during the day voting phase, you win and the game ends immediately.'],
+  },
+  executioner: {
+    role: 'executioner',
+    team: 'neutral',
+    summary: 'Wins if your assigned target is eliminated by day vote. If target dies at night, you become Jester.',
+    abilities: ['No night action.'],
+    notes: ['You have a secret target assigned at game start. If your target is eliminated by day vote, you win (game continues). If your target dies at night, you become the Jester.'],
+  },
 };
 
 export function formatRoleSetupForPrompt(roleCounts: Partial<Record<Role, number>>): string {
@@ -131,6 +145,15 @@ export function formatRoleSetupForPrompt(roleCounts: Partial<Record<Role, number
       return parts.join('\n');
     });
 
+  const neutralRoles = selected.filter(r => ROLE_DEFINITIONS[r]?.team === 'neutral');
+  const neutralWinConditions: string[] = [];
+  if (neutralRoles.includes('jester')) {
+    neutralWinConditions.push('- Jester: get eliminated by day vote (game ends immediately).');
+  }
+  if (neutralRoles.includes('executioner')) {
+    neutralWinConditions.push('- Executioner: get your assigned target eliminated by day vote (co-win, game continues).');
+  }
+
   return [
     'Role setup for this game (public knowledge):',
     ...lines,
@@ -138,6 +161,7 @@ export function formatRoleSetupForPrompt(roleCounts: Partial<Record<Role, number
     'Win conditions:',
     "- Town: eliminate all Mafia (mafia, godfather, mafia_roleblocker, framer, janitor, forger).",
     '- Mafia: equal or outnumber the Town.',
+    ...(neutralWinConditions.length > 0 ? neutralWinConditions : []),
   ].join('\n');
 }
 

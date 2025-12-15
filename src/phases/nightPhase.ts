@@ -144,6 +144,32 @@ export class NightPhase {
         engine.killPlayer(player, revealedRole);
         engine.recordPublic({ type: 'SYSTEM', content: `${player} died during the night.` });
       }
+      
+      // Check for Executioner→Jester conversion
+      if (engine.state.executionerTargetByPlayer) {
+        for (const [exeName, targetName] of Object.entries(engine.state.executionerTargetByPlayer)) {
+          if (resolved.deaths.has(targetName)) {
+            const exePlayer = engine.state.players[exeName];
+            if (exePlayer && exePlayer.isAlive && exePlayer.role === 'executioner') {
+              // Convert Executioner to Jester
+              engine.state.players[exeName]!.role = 'jester';
+              engine.agents[exeName]?.setRole('jester');
+              logger.setPlayerRole(exeName, 'jester');
+              engine.agents[exeName]?.observePrivateEvent(
+                `Your target ${targetName} died at night. You are now the Jester. Your new goal is to get eliminated by day vote.`
+              );
+              logger.log({
+                type: 'SYSTEM',
+                content: `Executioner ${exeName} converted to Jester (target ${targetName} died at night)`,
+                metadata: { role: 'jester', player: exeName, visibility: 'private' },
+              });
+              // Remove the target from the mapping
+              delete engine.state.executionerTargetByPlayer[exeName];
+            }
+          }
+        }
+      }
+      
       return;
     }
 
