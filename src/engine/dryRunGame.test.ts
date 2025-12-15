@@ -28,6 +28,7 @@ test('dry-run harness: game runs to completion without abort', async () => {
     memory_window_size: 10,
     enable_faction_memory: true,
     log_thoughts: false,
+    role_setup_visibility: 'exact',
   };
 
   const engine = new GameEngine(config);
@@ -51,4 +52,5 @@ test('dry-run harness: game runs to completion without abort', async () => {
   assert.ok(reflectionEntries.length > 0, 'Should have at least one post-game reflection entry');
   assert.equal(reflectionEntries.length, config.players.length, 'Should have one reflection per player');
 });
+
 

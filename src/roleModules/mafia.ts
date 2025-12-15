@@ -109,7 +109,13 @@ export async function collectMafiaActions(
     shooter.config.name,
     `Night ${engine.state.round}. You are leading the Mafia kill. Choose a target.
 Note: If you are blocked, the Mafia kill fails.`,
-    validTargets
+    validTargets,
+    [],
+    engine.getNight1AssignedRandomTargetSystemAddendum({
+      actor: shooter.config.name,
+      decisionKind: 'mafia_kill',
+      candidateTargets: validTargets,
+    }) ?? undefined
   );
 
   // Notify the whole faction (simplified)

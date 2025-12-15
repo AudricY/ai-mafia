@@ -13,6 +13,12 @@ export async function collectRoleblockerActions(engine: GameEngine): Promise<Arr
     const validTargets = aliveNames.filter(n => n !== rb.config.name);
     if (validTargets.length === 0) continue;
 
+    const systemAddendum = engine.getNight1AssignedRandomTargetSystemAddendum({
+      actor: rb.config.name,
+      decisionKind: 'block',
+      candidateTargets: validTargets,
+    });
+
     const target = await engine.agentIO.decide(
       rb.config.name,
       `Night ${engine.state.round}. You are the Roleblocker.
@@ -25,7 +31,9 @@ Guidance (soft):
 - Use public behavior (pushy framing, coordinated narratives, strange vote positioning) to pick a target.
 - Avoid purely random blocks unless you have no read.
 - Note: Your block can be blocked by a Jailkeeper or higher-priority blocker.`,
-      validTargets
+      validTargets,
+      [],
+      systemAddendum ?? undefined
     );
 
     actions.push({ kind: 'block', actor: rb.config.name, target });
@@ -41,4 +49,5 @@ Guidance (soft):
 
   return actions;
 }
+
 

@@ -9,6 +9,8 @@ log_thoughts: true
 players:
   - name: "Alice"
     model: "xai/grok-4.1-fast-reasoning"
+    systemPrompt: |
+      it is a very good idea to pretend to be a vanilla villager.
 
   - name: "Bob"
     model: "xai/grok-4.1-fast-reasoning"
@@ -37,14 +39,30 @@ players:
   - name: "Judy"
     model: "xai/grok-4.1-fast-reasoning"
 
-role_seed: 123
-role_counts:
-  godfather: 1
-  mafia_roleblocker: 1
-  mafia: 1
-  cop: 1
-  doctor: 1
-  roleblocker: 1
-  vigilante: 1
-  villager: 3
+  - name: "Kyle"
+    model: "xai/grok-4.1-fast-reasoning"
+
+roles:
+  Alice: godfather          # mafia
+  Bob: mafia_roleblocker    # mafia
+  Charlie: janitor            # mafia
+  Dave: cop                 # town PR
+  Eve: doctor               # town PR
+  Frank: roleblocker        # town PR
+  Grace: vigilante          # town PR
+  Henry: tracker
+  Ivy: villager
+  Judy: villager
+  Kyle: jester
+
+# role_seed: 123
+# role_counts:
+#   godfather: 1
+#   mafia_roleblocker: 1
+#   mafia: 1
+#   cop: 1
+#   doctor: 1
+#   roleblocker: 1
+#   vigilante: 1
+#   villager: 3
 

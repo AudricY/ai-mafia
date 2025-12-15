@@ -15,6 +15,12 @@ export async function collectTrackerActions(
     const validTargets = aliveNames.filter(n => n !== tracker.config.name);
     if (validTargets.length === 0) continue;
 
+    const systemAddendum = engine.getNight1AssignedRandomTargetSystemAddendum({
+      actor: tracker.config.name,
+      decisionKind: 'track',
+      candidateTargets: validTargets,
+    });
+
     const target = await engine.agentIO.decide(
       tracker.config.name,
       `Night ${engine.state.round}. You are the Tracker.
@@ -25,7 +31,9 @@ Guidance (soft):
 - Track players you suspect might be performing night actions (power roles, suspected mafia).
 - You will learn who they visited (if anyone) - successful visits only.
 - If the tracked player was blocked or did nothing, you'll see "no visit".`,
-      validTargets
+      validTargets,
+      [],
+      systemAddendum ?? undefined
     );
 
     actions.push({ kind: 'track', actor: tracker.config.name, target });
@@ -41,3 +49,4 @@ Guidance (soft):
 
   return actions;
 }
+

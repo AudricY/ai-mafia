@@ -12,6 +12,12 @@ export async function collectDoctorActions(
   const actions: Array<Extract<NightActionIntent, { kind: 'save' }>> = [];
 
   for (const doc of doctors) {
+    const systemAddendum = engine.getNight1AssignedRandomTargetSystemAddendum({
+      actor: doc.config.name,
+      decisionKind: 'save',
+      candidateTargets: aliveNames,
+    });
+
     const target = await engine.agentIO.decide(
       doc.config.name,
       `Night ${engine.state.round}. You are the Doctor.
@@ -23,7 +29,9 @@ Guidance (soft):
 - Repeated self-protect is usually low value unless you expect to be attacked or you are broadly suspected.
 - If you have no strong read, rotate protection to avoid being predictable.
 - Note: If you are blocked, your save will not work.`,
-      aliveNames
+      aliveNames,
+      [],
+      systemAddendum ?? undefined
     );
 
     actions.push({ kind: 'save', actor: doc.config.name, target });
@@ -39,4 +47,5 @@ Guidance (soft):
 
   return actions;
 }
+
 

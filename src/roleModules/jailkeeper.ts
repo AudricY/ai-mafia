@@ -15,6 +15,12 @@ export async function collectJailkeeperActions(
     const validTargets = aliveNames.filter(n => n !== jk.config.name);
     if (validTargets.length === 0) continue;
 
+    const systemAddendum = engine.getNight1AssignedRandomTargetSystemAddendum({
+      actor: jk.config.name,
+      decisionKind: 'jail',
+      candidateTargets: validTargets,
+    });
+
     const target = await engine.agentIO.decide(
       jk.config.name,
       `Night ${engine.state.round}. You are the Jailkeeper.
@@ -25,7 +31,9 @@ Guidance (soft):
 - Jailing protects AND blocks the target (they cannot act and cannot be killed).
 - Use on players you want to protect (likely town power roles) or suspect (to prevent mafia actions).
 - Be strategic - jailing prevents both actions and kills.`,
-      validTargets
+      validTargets,
+      [],
+      systemAddendum ?? undefined
     );
 
     actions.push({ kind: 'jail', actor: jk.config.name, target });
@@ -41,3 +49,4 @@ Guidance (soft):
 
   return actions;
 }
+

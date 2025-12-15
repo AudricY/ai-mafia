@@ -46,6 +46,9 @@ export class GameEngine {
   roleCounts: Partial<Record<Role, number>> = {};
   roleSetupPublicText = '';
 
+  private night1RandomTargets = new Map<string, string>();
+  private night1Rng: () => number;
+
   private nightPhaseRunner = new NightPhase();
   private dayDiscussionPhaseRunner = new DayDiscussionPhase();
   private dayVotingPhaseRunner = new DayVotingPhase();
@@ -56,6 +59,11 @@ export class GameEngine {
     this.agents = {};
     this.mafiaMemory = config.enable_faction_memory ? createFactionMemory('mafia') : undefined;
     const players: Record<string, PlayerState> = {};
+
+    const isDryRun = (() => {
+      const v = (process.env.AI_MAFIA_DRY_RUN ?? process.env.DRY_RUN ?? '').toLowerCase().trim();
+      return v === '1' || v === 'true' || v === 'yes' || v === 'on';
+    })();
 
     // Pass known players to logger for highlighting
     logger.setKnownPlayers(config.players.map(p => p.name));
@@ -99,7 +107,44 @@ export class GameEngine {
       executionerTargetByPlayer: {},
     };
 
+    // RNG for Night 1 bias-mitigation "assigned random target" prompts.
+    // In dry-run, keep deterministic. Otherwise, default to a time-based seed so runs vary.
+    const night1Seed =
+      (isDryRun && process.env.AI_MAFIA_DRY_RUN_SEED ? Number(process.env.AI_MAFIA_DRY_RUN_SEED) : undefined) ??
+      (isDryRun && this.config.role_seed !== undefined ? this.config.role_seed + 4242 : undefined) ??
+      Date.now();
+    this.night1Rng = mulberry32(Number.isFinite(night1Seed) ? night1Seed : Date.now());
+
     this.assignRoles();
+  }
+
+  /**
+   * Night 1 bias mitigation:
+   * If an agent would otherwise "pick a random person", we pre-roll a random target
+   * and tell them who it is in the system prompt. This avoids model-name biases
+   * (e.g. repeatedly choosing the same name across runs).
+   */
+  getNight1AssignedRandomTargetSystemAddendum(params: {
+    actor: string;
+    decisionKind: string;
+    candidateTargets: readonly string[];
+  }): string | null {
+    if (this.state.round !== 1) return null;
+    const candidates = params.candidateTargets.filter(c => c && c !== params.actor);
+    if (candidates.length === 0) return null;
+
+    const key = `night1|${params.decisionKind}|${params.actor}`;
+    const existing = this.night1RandomTargets.get(key);
+    let chosen = existing && candidates.includes(existing) ? existing : null;
+    if (!chosen) {
+      const idx = Math.floor(this.night1Rng() * candidates.length);
+      chosen = candidates[idx]!;
+      this.night1RandomTargets.set(key, chosen);
+    }
+
+    return `Night 1 randomization (bias mitigation):
+- If you would otherwise choose a target "at random" due to lack of evidence, your assigned random target for this decision is: ${chosen}
+- If you have no evidence-based preference, choose ${chosen}. Otherwise, choose based on your strategy.`;
   }
 
   getAlivePlayers(): PlayerState[] {
@@ -543,4 +588,5 @@ export class GameEngine {
     );
   }
 }
+
 

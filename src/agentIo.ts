@@ -91,7 +91,8 @@ export class AgentIO {
     actor: string,
     context: string,
     options: readonly T[],
-    history: CoreMessage[] = []
+    history: CoreMessage[] = [],
+    systemAddendum?: string
   ): Promise<T> {
     const agent = this.agents[actor];
     if (!agent) return pickSafeFallback(options) as T;
@@ -107,7 +108,7 @@ export class AgentIO {
     for (let attempt = 1; attempt <= this.cfg.maxAttempts; attempt++) {
       try {
         const choice = await withTimeout(
-          agent.generateDecision(context, optionsArray, history),
+          agent.generateDecision(context, optionsArray, history, systemAddendum),
           this.cfg.decisionTimeoutMs
         );
         const matched =

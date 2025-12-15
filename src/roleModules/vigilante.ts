@@ -16,6 +16,12 @@ export async function collectVigilanteActions(
     if (validTargets.length === 0) continue;
 
     const options = [...validTargets, 'nobody'];
+    const systemAddendum = engine.getNight1AssignedRandomTargetSystemAddendum({
+      actor: vigi.config.name,
+      decisionKind: 'vigilante_shoot',
+      candidateTargets: validTargets,
+    });
+
     const decision = await engine.agentIO.decide(
       vigi.config.name,
       `Night ${engine.state.round}. You are the Vigilante.
@@ -27,7 +33,9 @@ Guidance (soft):
 - Prefer targets supported by multiple concrete red flags (vote positioning, contradictions, narrative steering).
 - If you're uncertain, 'nobody' is acceptable.
 - Note: If you are blocked, your shot will not work.`,
-      options
+      options,
+      [],
+      systemAddendum ?? undefined
     );
 
     if (decision === 'nobody') continue;
@@ -45,4 +53,5 @@ Guidance (soft):
 
   return actions;
 }
+
 

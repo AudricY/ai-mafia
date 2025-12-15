@@ -14,6 +14,12 @@ export async function collectCopActions(
     const validTargets = aliveNames.filter(n => n !== cop.config.name);
     if (validTargets.length === 0) continue;
 
+    const systemAddendum = engine.getNight1AssignedRandomTargetSystemAddendum({
+      actor: cop.config.name,
+      decisionKind: 'investigate',
+      candidateTargets: validTargets,
+    });
+
     const target = await engine.agentIO.decide(
       cop.config.name,
       `Night ${engine.state.round}. You are the Cop.
@@ -24,7 +30,9 @@ Guidance (soft):
 - Prioritize players driving narratives, coordinating votes, or whose behavior feels strategically motivated.
 - If town is stuck, investigate someone central to the discussion rather than a silent bystander.
 - Note: If you are blocked, your investigation will not work. Also note that Framers can make players appear MAFIA.`,
-      validTargets
+      validTargets,
+      [],
+      systemAddendum ?? undefined
     );
 
     actions.push({ kind: 'investigate', actor: cop.config.name, target });
@@ -32,4 +40,5 @@ Guidance (soft):
 
   return actions;
 }
+
 

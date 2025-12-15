@@ -170,7 +170,13 @@ Important:
       leader.config.name,
       `Night ${engine.state.round}. You are leading the Mafia kill. Choose a target.
 Note: If you are blocked, the Mafia kill fails.`,
-      validKillTargets
+      validKillTargets,
+      [],
+      engine.getNight1AssignedRandomTargetSystemAddendum({
+        actor: leader.config.name,
+        decisionKind: 'mafia_kill',
+        candidateTargets: validKillTargets,
+      }) ?? undefined
     );
 
     mafiaTeam.forEach(m => {
