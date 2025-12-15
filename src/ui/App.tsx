@@ -173,17 +173,24 @@ export function App(props: { players: string[] }) {
     return result;
   }, [entries]);
 
-  // Get list of players with notebooks
-  const playersWithNotebooks = useMemo(() => {
-    return Object.keys(notebooks).sort();
-  }, [notebooks]);
+  const deadPlayers = useMemo(() => {
+    const dead = new Set<string>();
+    for (const e of entries) {
+      if (e.type === 'DEATH' && e.player) dead.add(e.player);
+    }
+    return dead;
+  }, [entries]);
+
+  const isAlive = useMemo(() => {
+    return (player: string) => !deadPlayers.has(player);
+  }, [deadPlayers]);
 
   // Initialize selected player when switching to notebooks view
   useEffect(() => {
-    if (view === 'NOTEBOOKS' && !selectedPlayer && playersWithNotebooks.length > 0) {
-      setSelectedPlayer(playersWithNotebooks[0]!);
+    if (view === 'NOTEBOOKS' && !selectedPlayer && props.players.length > 0) {
+      setSelectedPlayer(props.players[0]!);
     }
-  }, [view, selectedPlayer, playersWithNotebooks]);
+  }, [view, selectedPlayer, props.players]);
 
   useInput((input, key) => {
     if (input === 'q' || key.escape) {
@@ -194,9 +201,9 @@ export function App(props: { players: string[] }) {
     if (view === 'NOTEBOOKS') {
       // Notebooks view controls
       if (key.upArrow && selectedPlayer) {
-        const idx = playersWithNotebooks.indexOf(selectedPlayer);
+        const idx = props.players.indexOf(selectedPlayer);
         if (idx > 0) {
-          setSelectedPlayer(playersWithNotebooks[idx - 1]!);
+          setSelectedPlayer(props.players[idx - 1]!);
           setScrollFromBottomRows(0);
         } else {
           // Scroll notebook content
@@ -205,9 +212,9 @@ export function App(props: { players: string[] }) {
         return;
       }
       if (key.downArrow && selectedPlayer) {
-        const idx = playersWithNotebooks.indexOf(selectedPlayer);
-        if (idx < playersWithNotebooks.length - 1) {
-          setSelectedPlayer(playersWithNotebooks[idx + 1]!);
+        const idx = props.players.indexOf(selectedPlayer);
+        if (idx < props.players.length - 1) {
+          setSelectedPlayer(props.players[idx + 1]!);
           setScrollFromBottomRows(0);
         } else {
           // Scroll notebook content
@@ -458,6 +465,8 @@ export function App(props: { players: string[] }) {
               <Text>  </Text>
               <Text color="gray">Player:</Text>
               <Text> {selectedPlayer}</Text>
+              <Text> </Text>
+              {isAlive(selectedPlayer) ? <Text color="green">(alive)</Text> : <Text color="red">(dead)</Text>}
               {playerRoles[selectedPlayer] ? (
                 <>
                   <Text> </Text>
@@ -488,22 +497,21 @@ export function App(props: { players: string[] }) {
             overflow="hidden"
             flexShrink={0}
           >
-            {playersWithNotebooks.map(player => {
+            {props.players.map(player => {
               const isSelected = player === selectedPlayer;
               const role = playerRoles[player];
               const noteCount = notebooks[player]?.length ?? 0;
+              const alive = isAlive(player);
               return (
                 <Text key={player} wrap="wrap">
                   {isSelected ? <Text color="cyan" bold>{'> '}</Text> : <Text>  </Text>}
-                  <Text color={isSelected ? 'cyan' : undefined}>{player}</Text>
+                  <Text color={!alive ? 'gray' : isSelected ? 'cyan' : undefined}>{player}</Text>
+                  {!alive ? <Text color="red"> (dead)</Text> : null}
                   {role ? <Text color={roleColor(role)}> ({role})</Text> : null}
                   <Text color="gray"> ({noteCount})</Text>
                 </Text>
               );
             })}
-            {playersWithNotebooks.length === 0 && (
-              <Text color="gray">No notebooks yet</Text>
-            )}
           </Box>
           {/* Notebook content */}
           <Box
@@ -521,7 +529,7 @@ export function App(props: { players: string[] }) {
                 </Text>
               ))
             ) : (
-              <Text color="gray">Select a player to view their notebook</Text>
+              <Text color="gray">No notebook entries for this player</Text>
             )}
           </Box>
         </Box>

@@ -57,7 +57,7 @@ export function resolveNightActions(input: NightResolutionInput): ResolvedNightA
   const frameActions: Array<{ actor: string; target: string }> = [];
   const trackActions: Array<{ actor: string; target: string }> = [];
   const cleanActions: Array<{ actor: string; target: string }> = [];
-  const forgeActions: Array<{ actor: string; target: string; fakeRole: string }> = [];
+  const forgeActions: Array<{ actor: string; target: string; fakeRole: Role }> = [];
 
   for (const a of input.actions) {
     if (a.kind === 'jail') {

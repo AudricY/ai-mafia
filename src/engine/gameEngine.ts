@@ -6,6 +6,7 @@ import { formatRoleSetupForPrompt, formatRoleSetupForPublicLog } from '../roles.
 import { NightPhase } from '../phases/nightPhase.ts';
 import { DayDiscussionPhase } from '../phases/dayDiscussionPhase.ts';
 import { DayVotingPhase } from '../phases/dayVotingPhase.ts';
+import { PostGameReflectionsPhase } from '../phases/postGameReflectionsPhase.ts';
 
 function mulberry32(seed: number): () => number {
   let t = seed >>> 0;
@@ -42,6 +43,7 @@ export class GameEngine {
   private nightPhaseRunner = new NightPhase();
   private dayDiscussionPhaseRunner = new DayDiscussionPhase();
   private dayVotingPhaseRunner = new DayVotingPhase();
+  private postGameReflectionsPhaseRunner = new PostGameReflectionsPhase();
 
   constructor(config: GameConfig) {
     this.config = config;
@@ -201,6 +203,28 @@ export class GameEngine {
 
     if (this.state.winners) {
       this.recordPublic({ type: 'WIN', content: `Game Over! Winners: ${this.state.winners}` });
+      this.state.phase = 'game_over';
+      
+      // Final role reveal
+      this.recordPublic({ type: 'SYSTEM', content: '--- Final Role Reveal ---' });
+      for (const [name, playerState] of Object.entries(this.state.players)) {
+        this.recordPublic({
+          type: 'SYSTEM',
+          content: `${name} was ${playerState.role}.`,
+          metadata: { visibility: 'public', player: name, role: playerState.role, kind: 'final_reveal' },
+        });
+      }
+      
+      // Post-game reflections
+      try {
+        await this.postGameReflectionsPhaseRunner.run(this);
+      } catch (error) {
+        logger.log({
+          type: 'SYSTEM',
+          content: `Post-game reflections phase failed: ${error instanceof Error ? error.message : String(error)}`,
+          metadata: { visibility: 'private', error },
+        });
+      }
       return;
     }
     if (this.state.abortReason) {

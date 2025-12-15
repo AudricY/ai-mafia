@@ -22,7 +22,7 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   });
 }
 
-function pickSafeFallback(options: string[]): string {
+function pickSafeFallback(options: readonly string[]): string {
   const lowered = new Map(options.map(o => [o.toLowerCase(), o] as const));
   return lowered.get('skip') ?? lowered.get('nobody') ?? options[0] ?? '';
 }
@@ -71,18 +71,29 @@ export class AgentIO {
     return 'SKIP';
   }
 
-  async decide(actor: string, context: string, options: string[], history: CoreMessage[] = []): Promise<string> {
+  async decide<T extends string>(
+    actor: string,
+    context: string,
+    options: readonly T[],
+    history: CoreMessage[] = []
+  ): Promise<T> {
     const agent = this.agents[actor];
-    if (!agent) return pickSafeFallback(options);
-    if (options.length === 0) return '';
+    if (!agent) return pickSafeFallback(options) as T;
+    if (options.length === 0) return '' as T;
 
     const attemptMetaBase = { actor, kind: 'decision' } as const;
+    const optionsArray = [...options];
 
     let lastError: unknown = null;
     for (let attempt = 1; attempt <= this.cfg.maxAttempts; attempt++) {
       try {
-        const choice = await withTimeout(agent.generateDecision(context, options, history), this.cfg.decisionTimeoutMs);
-        const matched = options.find(o => o === choice) ?? options.find(o => o.toLowerCase() === choice.trim().toLowerCase());
+        const choice = await withTimeout(
+          agent.generateDecision(context, optionsArray, history),
+          this.cfg.decisionTimeoutMs
+        );
+        const matched =
+          options.find(o => o === choice) ??
+          options.find(o => o.toLowerCase() === choice.trim().toLowerCase());
         if (matched) return matched;
         lastError = new Error(`Invalid choice "${choice}"`);
       } catch (err) {
@@ -96,7 +107,34 @@ export class AgentIO {
       });
     }
 
-    return pickSafeFallback(options);
+    return pickSafeFallback(options) as T;
+  }
+
+  async reflect(actor: string, context: string): Promise<string> {
+    const agent = this.agents[actor];
+    if (!agent) return 'No reflections.';
+
+    const attemptMetaBase = { actor, kind: 'reflection' } as const;
+
+    let lastError: unknown = null;
+    for (let attempt = 1; attempt <= this.cfg.maxAttempts; attempt++) {
+      try {
+        const text = await withTimeout(agent.generateReflection(context), this.cfg.responseTimeoutMs);
+        const trimmed = text.trim();
+        if (trimmed) return trimmed;
+        lastError = new Error('Empty response');
+      } catch (err) {
+        lastError = err;
+      }
+
+      logger.log({
+        type: 'SYSTEM',
+        content: `AgentIO: ${actor} reflection failed (attempt ${attempt}/${this.cfg.maxAttempts}): ${String((lastError as Error)?.message ?? lastError)}`,
+        metadata: { ...attemptMetaBase, attempt, visibility: 'private' } satisfies GameLogEntry['metadata'],
+      });
+    }
+
+    return 'No reflections.';
   }
 }
 

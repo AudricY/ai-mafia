@@ -488,6 +488,54 @@ Output format:
     }
   }
 
+  async generateReflection(systemContext: string): Promise<string> {
+    try {
+      this.ensureMemoryBudget();
+
+      if (isDryRun()) {
+        // Deterministic reflection for dry-run mode
+        const reflection = `dry-run reflection: role=${this.currentRole}, context=${systemContext.substring(0, 50)}...`;
+        return `As ${this.currentRole}, I found the game interesting. The key moments were challenging, and I learned a lot about reading players.`;
+      }
+
+      const model = this.getModel();
+
+      const systemPrompt = this.buildSystemPrompt(`
+The game has ended. You can now freely discuss your true role and what happened.
+
+Output format:
+- Return plain text (no JSON). Just write your reflection directly.
+- Keep it concise (2-3 sentences).
+- You can discuss your role, key moments, surprises, or what you'd do differently.
+- Be conversational, like IRL post-game chat.
+      `);
+
+      // Build a simple message with the context
+      const messages: CoreMessage[] = [
+        {
+          role: 'user',
+          content: systemContext,
+        },
+      ];
+
+      const result = await generateText({
+        model,
+        system: systemPrompt,
+        messages,
+        temperature: this.config.temperature,
+      });
+
+      return result.text.trim() || 'No reflections.';
+    } catch (error) {
+      logger.log({
+        type: 'SYSTEM',
+        content: `Error generating reflection for ${this.config.name}: ${(error as Error).message}`,
+        metadata: { error },
+      });
+      return 'No reflections.';
+    }
+  }
+
   private matchOption(choice: string, options: string[]): string | undefined {
     const normalized = choice.replace(/^["'`]+|["'`]+$/g, '').trim().toLowerCase();
 

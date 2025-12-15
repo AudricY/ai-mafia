@@ -12,7 +12,7 @@ export type NightActionIntent =
   | { kind: 'jail'; actor: string; target: string }
   | { kind: 'frame'; actor: string; target: string }
   | { kind: 'clean'; actor: string; target: string }
-  | { kind: 'forge'; actor: string; target: string; fakeRole: string };
+  | { kind: 'forge'; actor: string; target: string; fakeRole: Role };
 
 export type InvestigationResult = 'MAFIA' | 'INNOCENT';
 
@@ -38,7 +38,7 @@ export interface ResolvedTracker {
 
 export interface DeathRevealOverride {
   player: string;
-  revealedRole: string | null; // null means "unknown", string means fake role
+  revealedRole: Role | null; // null means "unknown", Role means fake role
 }
 
 export interface ResolvedNightActions {

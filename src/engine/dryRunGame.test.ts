@@ -26,7 +26,6 @@ test('dry-run harness: game runs to completion without abort', async () => {
     },
     role_seed: 1,
     memory_window_size: 10,
-    memory_summary_max_chars: 800,
     enable_faction_memory: true,
     log_thoughts: false,
   };
@@ -37,5 +36,19 @@ test('dry-run harness: game runs to completion without abort', async () => {
   assert.ok(engine.state.history.length > 0);
   assert.equal(engine.state.abortReason, undefined);
   assert.ok(engine.state.winners === 'mafia' || engine.state.winners === 'villagers');
+
+  // Verify final role reveal entries exist
+  const finalRevealEntries = engine.state.history.filter(
+    e => e.metadata?.kind === 'final_reveal'
+  );
+  assert.ok(finalRevealEntries.length > 0, 'Should have at least one final role reveal entry');
+  assert.equal(finalRevealEntries.length, config.players.length, 'Should have one final reveal per player');
+
+  // Verify post-game reflection entries exist
+  const reflectionEntries = engine.state.history.filter(
+    e => e.metadata?.kind === 'post_game_reflection'
+  );
+  assert.ok(reflectionEntries.length > 0, 'Should have at least one post-game reflection entry');
+  assert.equal(reflectionEntries.length, config.players.length, 'Should have one reflection per player');
 });
 
