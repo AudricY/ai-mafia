@@ -1,7 +1,6 @@
 import type { GameEngine } from '../engine/gameEngine.js';
 import type { NightActionIntent } from '../actions/types.js';
 import { logger } from '../logger.js';
-import { runMafiaDiscussion } from './mafia.ts';
 
 export async function collectFramerActions(
   engine: GameEngine
@@ -13,20 +12,8 @@ export async function collectFramerActions(
   if (framers.length === 0) return [];
   const actions: Array<Extract<NightActionIntent, { kind: 'frame' }>> = [];
 
-  // Framers coordinate with the mafia team
-  const mafiaTeam = alivePlayers.filter(
-    p =>
-      p.role === 'mafia' ||
-      p.role === 'godfather' ||
-      p.role === 'mafia_roleblocker' ||
-      p.role === 'framer'
-  );
-
-  await runMafiaDiscussion(engine, mafiaTeam, aliveNames, {
-    systemLogContent: 'Mafia team (including framer) is discussing framing strategy...',
-    goal: 'Discuss who to frame tonight. Coordinate with your team.',
-    rounds: 1,
-  });
+  // Note: Mafia discussion is now handled by collectMafiaCouncilIntents.
+  // This function is kept for backwards compatibility but skips discussion.
 
   for (const framer of framers) {
     const validTargets = aliveNames.filter(n => n !== framer.config.name);
@@ -47,6 +34,14 @@ Guidance (soft):
 
     actions.push({ kind: 'frame', actor: framer.config.name, target });
 
+    // Notify mafia team
+    const mafiaTeam = alivePlayers.filter(
+      p =>
+        p.role === 'mafia' ||
+        p.role === 'godfather' ||
+        p.role === 'mafia_roleblocker' ||
+        p.role === 'framer'
+    );
     mafiaTeam.forEach(m => {
       engine.agents[m.config.name]?.observeFactionEvent(
         `Our framer (${framer.config.name}) chose to frame ${target}.`

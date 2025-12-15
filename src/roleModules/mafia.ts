@@ -62,6 +62,10 @@ Alive players: ${aliveNames.join(', ')}.`;
   }
 }
 
+/**
+ * @deprecated Use collectMafiaCouncilIntents instead. This function is kept for backwards compatibility
+ * but no longer runs mafia discussion (that's handled by the council).
+ */
 export async function collectMafiaActions(
   engine: GameEngine
 ): Promise<Array<Extract<NightActionIntent, { kind: 'kill'; source: 'mafia' }>>> {
@@ -79,14 +83,8 @@ export async function collectMafiaActions(
   );
   if (mafiaTeam.length === 0) return [];
 
-  // --- Mafia Discussion ---
-  // Two-person teams tend to waste turns “confirming” the same plan.
-  // Keep 1 round for 2 mafia; allow a second round only for larger teams.
-  await runMafiaDiscussion(engine, mafiaTeam, aliveNames, {
-    systemLogContent: 'Mafia team is discussing targeting strategy...',
-    goal: 'Discuss who to kill tonight. Coordinate with your team.',
-    rounds: mafiaTeam.length >= 3 ? 2 : 1,
-  });
+  // Note: Mafia discussion is now handled by collectMafiaCouncilIntents.
+  // This function is kept for backwards compatibility but skips discussion.
 
   // Find shooter (Godfather priority, then mafia, then other mafia roles).
   // Rule: If the chosen shooter is blocked, the Mafia kill fails.

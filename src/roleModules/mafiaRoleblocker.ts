@@ -1,7 +1,6 @@
 import type { GameEngine } from '../engine/gameEngine.js';
 import type { NightActionIntent } from '../actions/types.js';
 import { logger } from '../logger.js';
-import { runMafiaDiscussion } from './mafia.ts';
 
 export async function collectMafiaRoleblockerActions(
   engine: GameEngine
@@ -13,16 +12,8 @@ export async function collectMafiaRoleblockerActions(
   if (mafiaRoleblockers.length === 0) return [];
   const actions: Array<Extract<NightActionIntent, { kind: 'block' }>> = [];
 
-  // Mafia roleblockers coordinate with the mafia team
-  const mafiaTeam = alivePlayers.filter(
-    p => p.role === 'mafia' || p.role === 'godfather' || p.role === 'mafia_roleblocker'
-  );
-
-  await runMafiaDiscussion(engine, mafiaTeam, aliveNames, {
-    systemLogContent: 'Mafia team (including roleblocker) is discussing blocking strategy...',
-    goal: 'Discuss who to block tonight. Coordinate with your team.',
-    rounds: 1,
-  });
+  // Note: Mafia discussion is now handled by collectMafiaCouncilIntents.
+  // This function is kept for backwards compatibility but skips discussion.
 
   for (const mrb of mafiaRoleblockers) {
     const validTargets = aliveNames.filter(n => {
@@ -46,6 +37,10 @@ Guidance (soft):
 
     actions.push({ kind: 'block', actor: mrb.config.name, target });
 
+    // Notify mafia team
+    const mafiaTeam = alivePlayers.filter(
+      p => p.role === 'mafia' || p.role === 'godfather' || p.role === 'mafia_roleblocker'
+    );
     mafiaTeam.forEach(m => {
       engine.agents[m.config.name]?.observeFactionEvent(
         `Our roleblocker (${mrb.config.name}) chose to block ${target}.`

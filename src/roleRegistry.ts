@@ -2,41 +2,57 @@ import type { GameEngine } from './engine/gameEngine.js';
 import type { NightActionIntent } from './actions/types.js';
 import { collectRoleblockerActions } from './roleModules/roleblocker.ts';
 import { collectJailkeeperActions } from './roleModules/jailkeeper.ts';
-import { collectMafiaRoleblockerActions } from './roleModules/mafiaRoleblocker.ts';
-import { collectMafiaActions } from './roleModules/mafia.ts';
 import { collectCopActions } from './roleModules/cop.ts';
 import { collectDoctorActions } from './roleModules/doctor.ts';
 import { collectVigilanteActions } from './roleModules/vigilante.ts';
 import { collectTrackerActions } from './roleModules/tracker.ts';
-import { collectFramerActions } from './roleModules/framer.ts';
-import { collectJanitorActions } from './roleModules/janitor.ts';
-import { collectForgerActions } from './roleModules/forger.ts';
+import { collectMafiaCouncilIntents } from './roleModules/mafiaCouncil.ts';
 
+/**
+ * Collects all night actions concurrently (town roles decide while mafia planning runs),
+ * then merges them in canonical deterministic order.
+ */
 export async function collectNightActions(engine: GameEngine): Promise<NightActionIntent[]> {
+  // Run town collectors and mafia council concurrently
+  const [
+    jails,
+    blocks,
+    copActions,
+    doctorActions,
+    vigilanteActions,
+    trackerActions,
+    mafiaIntents,
+  ] = await Promise.all([
+    collectJailkeeperActions(engine),
+    collectRoleblockerActions(engine),
+    collectCopActions(engine),
+    collectDoctorActions(engine),
+    collectVigilanteActions(engine),
+    collectTrackerActions(engine),
+    collectMafiaCouncilIntents(engine),
+  ]);
+
+  // Merge in canonical order (same as before, but now deterministic regardless of async completion)
+  // Ordering: blocks/jails first (they affect other actions), then mafia actions, then town actions
+  // Priority order: jailkeeper > roleblocker > mafia_roleblocker (handled in resolver)
   const actions: NightActionIntent[] = [];
 
-  // Ordering: blocks/jails first (they affect other actions), then other actions
-  // Priority order: jailkeeper > roleblocker > mafia_roleblocker (handled in resolver)
-  const jails = await collectJailkeeperActions(engine);
+  // Jails first (highest priority blocks)
   actions.push(...jails);
 
-  const blocks = await collectRoleblockerActions(engine);
+  // Town roleblocker blocks
   actions.push(...blocks);
 
-  const mafiaBlocks = await collectMafiaRoleblockerActions(engine);
-  actions.push(...mafiaBlocks);
+  // Mafia intents (includes kill, mafia_roleblocker blocks, frame, clean, forge)
+  // Within mafia intents, we maintain order: kill, block, frame, clean, forge
+  // (mafiaCouncil already emits them in this order)
+  actions.push(...mafiaIntents);
 
-  // Mafia actions (kill, frame, janitor, forger)
-  actions.push(...(await collectMafiaActions(engine)));
-  actions.push(...(await collectFramerActions(engine)));
-  actions.push(...(await collectJanitorActions(engine)));
-  actions.push(...(await collectForgerActions(engine)));
-
-  // Town actions
-  actions.push(...(await collectCopActions(engine)));
-  actions.push(...(await collectDoctorActions(engine)));
-  actions.push(...(await collectVigilanteActions(engine)));
-  actions.push(...(await collectTrackerActions(engine)));
+  // Town actions (investigate, save, kill, track)
+  actions.push(...copActions);
+  actions.push(...doctorActions);
+  actions.push(...vigilanteActions);
+  actions.push(...trackerActions);
 
   return actions;
 }

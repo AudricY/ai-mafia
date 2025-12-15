@@ -1,7 +1,6 @@
 import type { GameEngine } from '../engine/gameEngine.js';
 import type { NightActionIntent } from '../actions/types.js';
 import { logger } from '../logger.js';
-import { runMafiaDiscussion } from './mafia.ts';
 
 export async function collectJanitorActions(
   engine: GameEngine
@@ -13,21 +12,8 @@ export async function collectJanitorActions(
   if (janitors.length === 0) return [];
   const actions: Array<Extract<NightActionIntent, { kind: 'clean' }>> = [];
 
-  // Janitors coordinate with the mafia team
-  const mafiaTeam = alivePlayers.filter(
-    p =>
-      p.role === 'mafia' ||
-      p.role === 'godfather' ||
-      p.role === 'mafia_roleblocker' ||
-      p.role === 'framer' ||
-      p.role === 'janitor'
-  );
-
-  await runMafiaDiscussion(engine, mafiaTeam, aliveNames, {
-    systemLogContent: 'Mafia team (including janitor) is discussing cleaning strategy...',
-    goal: 'Discuss who to clean (hide role reveal) if we kill them tonight. Coordinate with your team.',
-    rounds: 1,
-  });
+  // Note: Mafia discussion is now handled by collectMafiaCouncilIntents.
+  // This function is kept for backwards compatibility but skips discussion.
 
   for (const janitor of janitors) {
     // Janitor can only clean mafia kills, so we need to know who mafia plans to kill
@@ -53,6 +39,15 @@ Guidance (soft):
 
     actions.push({ kind: 'clean', actor: janitor.config.name, target });
 
+    // Notify mafia team
+    const mafiaTeam = alivePlayers.filter(
+      p =>
+        p.role === 'mafia' ||
+        p.role === 'godfather' ||
+        p.role === 'mafia_roleblocker' ||
+        p.role === 'framer' ||
+        p.role === 'janitor'
+    );
     mafiaTeam.forEach(m => {
       engine.agents[m.config.name]?.observeFactionEvent(
         `Our janitor (${janitor.config.name}) chose to clean ${target} if killed.`

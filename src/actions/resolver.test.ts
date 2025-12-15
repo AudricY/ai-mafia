@@ -252,3 +252,41 @@ test('resolveNightActions: forger takes precedence over janitor', () => {
   assert.equal(override?.revealedRole, 'doctor'); // Forger takes precedence
 });
 
+test('resolveNightActions: tracker behavior stable with canonical action ordering', () => {
+  const rolesByPlayer: Record<string, Role> = {
+    Tracker: 'tracker',
+    Cop: 'cop',
+    Doc: 'doctor',
+    Town: 'villager',
+  };
+
+  // Tracker tracks Cop, Cop investigates Town, Doc saves Town
+  // With canonical ordering (jails/blocks first, then mafia actions, then town actions):
+  // Expected: Tracker sees Cop visited Town (investigation is the first successful action)
+  const actions: NightActionIntent[] = [
+    // Town actions in canonical order: investigate, save
+    { kind: 'investigate', actor: 'Cop', target: 'Town' },
+    { kind: 'save', actor: 'Doc', target: 'Town' },
+    { kind: 'track', actor: 'Tracker', target: 'Cop' },
+  ];
+
+  const resolved = resolveNightActions({ actions, rolesByPlayer, alivePlayers: Object.keys(rolesByPlayer) });
+  const trackerResult = resolved.trackerResults.find(r => r.actor === 'Tracker');
+  assert.ok(trackerResult);
+  assert.equal(trackerResult?.visited, 'Town'); // Tracker sees Cop's investigation visit
+
+  // Verify that reordering actions (as might happen with async collection) doesn't change result
+  // as long as we maintain canonical ordering in roleRegistry
+  const actionsReordered: NightActionIntent[] = [
+    { kind: 'track', actor: 'Tracker', target: 'Cop' },
+    { kind: 'save', actor: 'Doc', target: 'Town' },
+    { kind: 'investigate', actor: 'Cop', target: 'Town' },
+  ];
+
+  const resolvedReordered = resolveNightActions({ actions: actionsReordered, rolesByPlayer, alivePlayers: Object.keys(rolesByPlayer) });
+  const trackerResultReordered = resolvedReordered.trackerResults.find(r => r.actor === 'Tracker');
+  assert.ok(trackerResultReordered);
+  // Tracker should still see the same visit (first successful action by tracked player)
+  assert.equal(trackerResultReordered?.visited, 'Town');
+});
+

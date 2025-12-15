@@ -48,10 +48,14 @@ export class DayDiscussionPhase {
 
     const mechanicsReminder = [
       'Mechanics reminder (public):',
-      '- Tracker sees ONLY successful visits. "No visit" can mean they stayed home OR they were blocked.',
+      (engine.roleCounts.tracker || engine.config.role_setup_visibility !== 'exact')
+        ? '- Tracker sees ONLY successful visits. "No visit" can mean they stayed home OR they were blocked.'
+        : null,
       '- Town Roleblocker and Mafia Roleblocker cannot target themselves. Doctor CAN self-save.',
       '- If the Mafia killer is blocked, the Mafia kill fails.',
-    ].join('\n');
+    ]
+      .filter(Boolean)
+      .join('\n');
 
     const voteTally = engine.state.round > 1 ? engine.getVoteTallyForDay(engine.state.round - 1) : null;
     const recapLines = [

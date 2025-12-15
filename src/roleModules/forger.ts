@@ -2,7 +2,6 @@ import type { GameEngine } from '../engine/gameEngine.js';
 import type { NightActionIntent } from '../actions/types.js';
 import { logger } from '../logger.js';
 import type { Role } from '../types.js';
-import { runMafiaDiscussion } from './mafia.ts';
 
 export async function collectForgerActions(
   engine: GameEngine
@@ -14,22 +13,8 @@ export async function collectForgerActions(
   if (forgers.length === 0) return [];
   const actions: Array<Extract<NightActionIntent, { kind: 'forge' }>> = [];
 
-  // Forgers coordinate with the mafia team
-  const mafiaTeam = alivePlayers.filter(
-    p =>
-      p.role === 'mafia' ||
-      p.role === 'godfather' ||
-      p.role === 'mafia_roleblocker' ||
-      p.role === 'framer' ||
-      p.role === 'janitor' ||
-      p.role === 'forger'
-  );
-
-  await runMafiaDiscussion(engine, mafiaTeam, aliveNames, {
-    systemLogContent: 'Mafia team (including forger) is discussing forging strategy...',
-    goal: 'Discuss who to forge (fake role reveal) if we kill them tonight. Coordinate with your team.',
-    rounds: 1,
-  });
+  // Note: Mafia discussion is now handled by collectMafiaCouncilIntents.
+  // This function is kept for backwards compatibility but skips discussion.
 
   // Get list of valid roles for forging (all roles except mafia roles)
   const validRoles: Role[] = [
@@ -74,6 +59,16 @@ Valid roles: ${validRoles.join(', ')}.`,
 
     actions.push({ kind: 'forge', actor: forger.config.name, target, fakeRole });
 
+    // Notify mafia team
+    const mafiaTeam = alivePlayers.filter(
+      p =>
+        p.role === 'mafia' ||
+        p.role === 'godfather' ||
+        p.role === 'mafia_roleblocker' ||
+        p.role === 'framer' ||
+        p.role === 'janitor' ||
+        p.role === 'forger'
+    );
     mafiaTeam.forEach(m => {
       engine.agents[m.config.name]?.observeFactionEvent(
         `Our forger (${forger.config.name}) chose to forge ${target} as ${fakeRole} if killed.`
