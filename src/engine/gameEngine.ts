@@ -147,6 +147,31 @@ export class GameEngine {
 - If you have no evidence-based preference, choose ${chosen}. Otherwise, choose based on your strategy.`;
   }
 
+  /**
+   * Gets the Night 1 random target for a decision (returns just the target name, not the formatted message).
+   * Returns null if not Night 1 or if no valid target exists.
+   */
+  getNight1RandomTarget(params: {
+    actor: string;
+    decisionKind: string;
+    candidateTargets: readonly string[];
+  }): string | null {
+    if (this.state.round !== 1) return null;
+    const candidates = params.candidateTargets.filter(c => c && c !== params.actor);
+    if (candidates.length === 0) return null;
+
+    const key = `night1|${params.decisionKind}|${params.actor}`;
+    const existing = this.night1RandomTargets.get(key);
+    let chosen = existing && candidates.includes(existing) ? existing : null;
+    if (!chosen) {
+      const idx = Math.floor(this.night1Rng() * candidates.length);
+      chosen = candidates[idx]!;
+      this.night1RandomTargets.set(key, chosen);
+    }
+
+    return chosen;
+  }
+
   getAlivePlayers(): PlayerState[] {
     return Object.values(this.state.players).filter(p => p.isAlive);
   }

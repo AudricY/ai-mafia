@@ -11,6 +11,8 @@ export async function runMafiaDiscussion(
     systemLogContent: string;
     goal: string;
     rounds?: number;
+    validKillTargets?: string[];
+    validNonMafiaTargets?: string[];
   }
 ): Promise<void> {
   if (mafiaTeam.length <= 1) return;
@@ -20,6 +22,54 @@ export async function runMafiaDiscussion(
     content: opts.systemLogContent,
     metadata: { faction: 'mafia', visibility: 'faction' },
   });
+
+  // On Night 1, post randomization picks as a system message in faction chat
+  if (engine.state.round === 1) {
+    const randomPicks: string[] = [];
+    
+    // Get random kill target
+    if (opts.validKillTargets && opts.validKillTargets.length > 0) {
+      const killTarget = engine.getNight1RandomTarget({
+        actor: mafiaTeam[0]!.config.name, // Use first member as representative for shared kill decision
+        decisionKind: 'mafia_kill',
+        candidateTargets: opts.validKillTargets,
+      });
+      if (killTarget) {
+        randomPicks.push(`Kill target (if choosing randomly): ${killTarget}`);
+      }
+    }
+
+    // Get random block target (if there's a mafia roleblocker)
+    const hasMafiaRoleblocker = mafiaTeam.some(p => p.role === 'mafia_roleblocker');
+    if (hasMafiaRoleblocker && opts.validNonMafiaTargets && opts.validNonMafiaTargets.length > 0) {
+      const mafiaRoleblocker = mafiaTeam.find(p => p.role === 'mafia_roleblocker');
+      if (mafiaRoleblocker) {
+        const blockTarget = engine.getNight1RandomTarget({
+          actor: mafiaRoleblocker.config.name,
+          decisionKind: 'block',
+          candidateTargets: opts.validNonMafiaTargets,
+        });
+        if (blockTarget) {
+          randomPicks.push(`Block target (if choosing randomly): ${blockTarget}`);
+        }
+      }
+    }
+
+    if (randomPicks.length > 0) {
+      const randomPicksMessage = `Night 1 Randomization (Bias Mitigation):\n${randomPicks.join('\n')}\n\nIf you have no evidence-based preference, use these random picks. Otherwise, choose based on your strategy.`;
+      
+      // Post as system message visible to all mafia
+      mafiaTeam.forEach(m => {
+        engine.agents[m.config.name]?.observeFactionEvent(randomPicksMessage);
+      });
+
+      logger.log({
+        type: 'SYSTEM',
+        content: randomPicksMessage,
+        metadata: { faction: 'mafia', visibility: 'faction' },
+      });
+    }
+  }
 
   const discussionRounds = Math.max(1, opts.rounds ?? 1);
   for (let r = 0; r < discussionRounds; r++) {
@@ -111,11 +161,7 @@ export async function collectMafiaActions(
 Note: If you are blocked, the Mafia kill fails.`,
     validTargets,
     [],
-    engine.getNight1AssignedRandomTargetSystemAddendum({
-      actor: shooter.config.name,
-      decisionKind: 'mafia_kill',
-      candidateTargets: validTargets,
-    }) ?? undefined
+    undefined
   );
 
   // Notify the whole faction (simplified)

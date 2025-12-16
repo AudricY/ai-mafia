@@ -216,3 +216,4 @@ export function formatPossibleRolesForPublicLog(roles: Role[]): string {
   const uniqueRoles = Array.from(new Set(roles)).sort((a, b) => a.localeCompare(b));
   return uniqueRoles.length ? uniqueRoles.join(', ') : '(unknown)';
 }
+

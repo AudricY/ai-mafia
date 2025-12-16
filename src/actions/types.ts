@@ -58,3 +58,4 @@ export interface NightResolutionInput {
   alivePlayers: string[];
 }
 
+

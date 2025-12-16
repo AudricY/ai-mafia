@@ -210,11 +210,6 @@ export function App(props: { players: string[] }) {
   }, [view, selectedPlayer, props.players]);
 
   useInput((input, key) => {
-    if (input === 'q' || key.escape) {
-      exit();
-      return;
-    }
-
     if (view === 'NOTEBOOKS') {
       // Notebooks view controls
       if (key.upArrow && selectedPlayer) {
@@ -502,7 +497,7 @@ export function App(props: { players: string[] }) {
           <Text color="gray"> | </Text>
           <Text>↑/↓ scroll notebook</Text>
           <Text color="gray"> | </Text>
-          <Text>q/esc quit</Text>
+          <Text>Ctrl+C quit</Text>
         </Box>
         <Box flexDirection="row" flexGrow={1} height={logBoxHeight}>
           {/* Player list */}
@@ -582,7 +577,7 @@ export function App(props: { players: string[] }) {
         <Text color="gray"> | </Text>
         <Text>[ prev POV</Text>
         <Text color="gray"> | </Text>
-        <Text>q/esc quit</Text>
+        <Text>Ctrl+C quit</Text>
       </Box>
       <Box
         borderStyle="round"

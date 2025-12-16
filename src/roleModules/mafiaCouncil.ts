@@ -115,6 +115,8 @@ export async function collectMafiaCouncilIntents(engine: GameEngine): Promise<Ni
     systemLogContent: 'Mafia team is discussing night strategy...',
     goal: 'Discuss all night actions: who to kill, who to block (if you have a roleblocker), who to frame (if you have a framer), who to clean (if you have a janitor), and who to forge (if you have a forger). Coordinate with your team.',
     rounds: mafiaTeam.length >= 3 ? 2 : 1,
+    validKillTargets,
+    validNonMafiaTargets,
   });
 
   // Step 2: Choose leader and get JSON plan
@@ -172,11 +174,7 @@ Important:
 Note: If you are blocked, the Mafia kill fails.`,
       validKillTargets,
       [],
-      engine.getNight1AssignedRandomTargetSystemAddendum({
-        actor: leader.config.name,
-        decisionKind: 'mafia_kill',
-        candidateTargets: validKillTargets,
-      }) ?? undefined
+      undefined
     );
 
     mafiaTeam.forEach(m => {
