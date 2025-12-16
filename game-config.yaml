@@ -6,9 +6,17 @@ system_prompt: |
 log_thoughts: true
 # role_setup_visibility: exact  # Options: 'exact' (only roles in play with counts), 'pool' (possible roles from role_pool/role_counts, no counts), 'all' (all roles, no counts)
 
+# Discussion pacing (Open Discussion budget)
+# - Computed per day based on alive players and progression toward `rounds`.
+# - Budget is clamped to [floor, cap].
+# discussion_open_floor: 8
+# discussion_open_cap: 60
+# discussion_open_per_player_base: 1.2
+# discussion_open_per_player_round_bonus: 1.0
+
 players:
   - name: "Alice"
-    model: "xai/grok-4-fast-reasoning"
+    model: "openai/gpt-5.2"
     systemPrompt: |
       it is a very good idea to pretend to be a vanilla villager.
 
@@ -19,28 +27,28 @@ players:
     model: "xai/grok-4-fast-reasoning"
 
   - name: "Dave"
-    model: "deepseek/deepseek-v3.2"
+    model: "deepseek/deepseek-v3.2-thinking"
     
   - name: "Eve"
-    model: "deepseek/deepseek-v3.2"
+    model: "deepseek/deepseek-v3.2-thinking"
 
   - name: "Frank"
-    model: "deepseek/deepseek-v3.2"
+    model: "deepseek/deepseek-v3.2-thinking"
 
   - name: "Grace"
-    model: "deepseek/deepseek-v3.2"
+    model: "deepseek/deepseek-v3.2-thinking"
   
   - name: "Henry"
-    model: "deepseek/deepseek-v3.2"
+    model: "deepseek/deepseek-v3.2-thinking"
 
   - name: "Ivy"
-    model: "deepseek/deepseek-v3.2"
+    model: "openai/gpt-5.2"
 
   - name: "Judy"
-    model: "deepseek/deepseek-v3.2"
+    model: "google/gemini-3-pro-preview"
 
   - name: "Kyle"
-    model: "deepseek/deepseek-v3.2"
+    model: "google/gemini-3-pro-preview"
 
 roles:
   Alice: godfather          # mafia

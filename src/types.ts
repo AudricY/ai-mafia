@@ -52,6 +52,17 @@ export const GameConfigSchema = z.object({
   // seed is chosen (dry-run seed if present, otherwise time-based).
   player_order_seed: z.number().int().optional(),
   memory_window_size: z.number().int().positive().default(20),
+
+  // --- Discussion pacing (Day -> Open Discussion budget) ---
+  // Open discussion message budget scales with alive players and day progression.
+  // These are soft tuning knobs; the phase logic clamps to [floor, cap].
+  discussion_open_floor: z.number().int().nonnegative().default(8),
+  discussion_open_cap: z.number().int().nonnegative().default(60),
+  // Per-player open-discussion budget on the first day (before progression bonus).
+  discussion_open_per_player_base: z.number().nonnegative().default(1.2),
+  // Additional per-player budget gained as the game progresses toward `rounds`.
+  discussion_open_per_player_round_bonus: z.number().nonnegative().default(1.0),
+
   enable_faction_memory: z.boolean().default(true),
   log_thoughts: z.boolean().default(false),
   // Controls what role mechanics are disclosed to agents: 'exact' (only roles in play with counts),

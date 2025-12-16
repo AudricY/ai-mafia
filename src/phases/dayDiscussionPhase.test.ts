@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseSkipVoteToken } from './dayDiscussionPhase.js';
+import { computeOpenDiscussionMaxMessages, parseSkipVoteToken } from './dayDiscussionPhase.js';
 
 test('parseSkipVoteToken: token-only message (vote)', () => {
   const result = parseSkipVoteToken('VOTE_SKIP_DISCUSSION');
@@ -90,5 +90,63 @@ test('parseSkipVoteToken: token on line with other text (should not match)', () 
   const result = parseSkipVoteToken('I want to VOTE_SKIP_DISCUSSION now');
   assert.equal(result.cleanedMessage, 'I want to VOTE_SKIP_DISCUSSION now');
   assert.equal(result.voteAction, null);
+});
+
+test('computeOpenDiscussionMaxMessages: respects floor and cap', () => {
+  const common = {
+    plannedRounds: 3,
+    perPlayerBase: 1.2,
+    perPlayerRoundBonus: 1.0,
+  };
+
+  // Floor hit: small alive count early day
+  assert.equal(
+    computeOpenDiscussionMaxMessages({ ...common, aliveCount: 2, day: 1, floor: 8, cap: 60 }),
+    8
+  );
+
+  // Cap hit: large alive count late day
+  assert.equal(
+    computeOpenDiscussionMaxMessages({ ...common, aliveCount: 40, day: 3, floor: 8, cap: 60 }),
+    60
+  );
+});
+
+test('computeOpenDiscussionMaxMessages: increases with aliveCount (monotonic)', () => {
+  const common = {
+    day: 2,
+    plannedRounds: 3,
+    floor: 0,
+    cap: 1000,
+    perPlayerBase: 1.2,
+    perPlayerRoundBonus: 1.0,
+  };
+
+  const a = computeOpenDiscussionMaxMessages({ ...common, aliveCount: 4 });
+  const b = computeOpenDiscussionMaxMessages({ ...common, aliveCount: 5 });
+  const c = computeOpenDiscussionMaxMessages({ ...common, aliveCount: 6 });
+
+  assert.ok(a <= b, `expected aliveCount 4 <= 5 (got ${a} <= ${b})`);
+  assert.ok(b <= c, `expected aliveCount 5 <= 6 (got ${b} <= ${c})`);
+});
+
+test('computeOpenDiscussionMaxMessages: increases with day (monotonic, clamped to plannedRounds)', () => {
+  const common = {
+    aliveCount: 8,
+    plannedRounds: 3,
+    floor: 0,
+    cap: 1000,
+    perPlayerBase: 1.2,
+    perPlayerRoundBonus: 1.0,
+  };
+
+  const d1 = computeOpenDiscussionMaxMessages({ ...common, day: 1 });
+  const d2 = computeOpenDiscussionMaxMessages({ ...common, day: 2 });
+  const d3 = computeOpenDiscussionMaxMessages({ ...common, day: 3 });
+  const d10 = computeOpenDiscussionMaxMessages({ ...common, day: 10 }); // should clamp progress to 1
+
+  assert.ok(d1 <= d2, `expected day 1 <= 2 (got ${d1} <= ${d2})`);
+  assert.ok(d2 <= d3, `expected day 2 <= 3 (got ${d2} <= ${d3})`);
+  assert.equal(d3, d10, 'expected day beyond plannedRounds to clamp to the max budget');
 });
 

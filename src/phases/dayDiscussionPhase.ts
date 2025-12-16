@@ -1,6 +1,49 @@
 import type { GameEngine } from '../engine/gameEngine.js';
 import { logger } from '../logger.js';
 
+function clamp01(x: number): number {
+  if (x <= 0) return 0;
+  if (x >= 1) return 1;
+  return x;
+}
+
+function clampInt(x: number, min: number, max: number): number {
+  const lo = Number.isFinite(min) ? min : 0;
+  const hi = Number.isFinite(max) ? max : lo;
+  const bounded = Math.min(Math.max(x, lo), hi);
+  // Ensure a stable integer for message budgets.
+  return Math.round(bounded);
+}
+
+export function computeOpenDiscussionMaxMessages(params: {
+  aliveCount: number;
+  day: number;
+  plannedRounds: number;
+  floor: number;
+  cap: number;
+  perPlayerBase: number;
+  perPlayerRoundBonus: number;
+}): number {
+  const aliveCount = Math.max(0, Math.floor(params.aliveCount));
+  const day = Math.max(1, Math.floor(params.day));
+  const plannedRounds = Math.max(1, Math.floor(params.plannedRounds));
+
+  const floor = Math.max(0, Math.floor(params.floor));
+  const cap = Math.max(floor, Math.floor(params.cap));
+
+  const perPlayerBase = Math.max(0, params.perPlayerBase);
+  const perPlayerRoundBonus = Math.max(0, params.perPlayerRoundBonus);
+
+  // Normalize day progress to [0,1] based on configured planned rounds.
+  // If plannedRounds=1, progress is 0 (no scaling).
+  const progress =
+    plannedRounds > 1 ? clamp01((day - 1) / (plannedRounds - 1)) : 0;
+
+  const perPlayer = perPlayerBase + perPlayerRoundBonus * progress;
+  const raw = Math.round(aliveCount * perPlayer);
+  return clampInt(raw, floor, cap);
+}
+
 /**
  * Parses vote tokens from a message and returns the cleaned message and vote action.
  * Returns { cleanedMessage, voteAction } where voteAction is 'vote', 'unvote', or null.
@@ -70,9 +113,15 @@ export class DayDiscussionPhase {
       content: `${mechanicsReminder}\n\nRecap:\n- ${recapLines.join('\n- ')}`,
     });
 
-    // Open discussion keeps the old pacing:
-    // Day 1 = 15, Day 2 = 20, ...
-    const openDiscussionMaxMessages = 10 + engine.state.round * 5;
+    const openDiscussionMaxMessages = computeOpenDiscussionMaxMessages({
+      aliveCount,
+      day: engine.state.round,
+      plannedRounds: engine.config.rounds,
+      floor: engine.config.discussion_open_floor,
+      cap: engine.config.discussion_open_cap,
+      perPlayerBase: engine.config.discussion_open_per_player_base,
+      perPlayerRoundBonus: engine.config.discussion_open_per_player_round_bonus,
+    });
 
     logger.log({
       type: 'SYSTEM',
