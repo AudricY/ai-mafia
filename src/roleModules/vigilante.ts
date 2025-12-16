@@ -16,11 +16,6 @@ export async function collectVigilanteActions(
     if (validTargets.length === 0) continue;
 
     const options = [...validTargets, 'nobody'];
-    const systemAddendum = engine.getNight1AssignedRandomTargetSystemAddendum({
-      actor: vigi.config.name,
-      decisionKind: 'vigilante_shoot',
-      candidateTargets: validTargets,
-    });
 
     const decision = await engine.agentIO.decide(
       vigi.config.name,
@@ -36,7 +31,7 @@ Guidance (soft):
 - If you do NOT receive a "blocked" message, your shot was fired. If the target doesn't die, they were likely protected (e.g. by a Doctor) or immune. Do not confuse "target didn't die" with "I was blocked".`,
       options,
       [],
-      systemAddendum ?? undefined
+      undefined
     );
 
     if (decision === 'nobody') continue;
