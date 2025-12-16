@@ -2,9 +2,10 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Text, useApp, useInput, useStdout } from 'ink';
 import { logger } from '../logger.js';
 import type { GameLogEntry, Role } from '../types.js';
+import { buildPublicLedger, formatPublicLedger } from '../publicLedger.js';
 
 type PovMode = 'ALL' | 'PUBLIC' | { player: string };
-type ViewMode = 'LOG' | 'NOTEBOOKS';
+type ViewMode = 'LOG' | 'NOTEBOOKS' | 'LEDGER';
 
 function isMafiaRole(role: Role | undefined): boolean {
   return role === 'mafia' || role === 'godfather';
@@ -210,6 +211,45 @@ export function App(props: { players: string[] }) {
   }, [view, selectedPlayer, props.players]);
 
   useInput((input, key) => {
+    if (view === 'LEDGER') {
+      // Ledger view controls
+      if (key.upArrow) {
+        setScrollFromBottomRows(v => v + 1);
+        return;
+      }
+      if (key.downArrow) {
+        setScrollFromBottomRows(v => Math.max(0, v - 1));
+        return;
+      }
+      if (key.pageUp) {
+        setScrollFromBottomRows(v => v + Math.max(1, Math.floor(logContentRows * 0.9)));
+        return;
+      }
+      if (key.pageDown) {
+        setScrollFromBottomRows(v => Math.max(0, v - Math.max(1, Math.floor(logContentRows * 0.9))));
+        return;
+      }
+      if (input === 'G') {
+        setScrollFromBottomRows(Number.POSITIVE_INFINITY);
+        return;
+      }
+      if (input === 'g') {
+        setScrollFromBottomRows(0);
+        return;
+      }
+      if (input === 'n') {
+        setView('NOTEBOOKS');
+        setScrollFromBottomRows(0);
+        return;
+      }
+      if (input === 'l') {
+        setView('LOG');
+        setScrollFromBottomRows(0);
+        return;
+      }
+      return;
+    }
+
     if (view === 'NOTEBOOKS') {
       // Notebooks view controls
       if (key.upArrow && selectedPlayer) {
@@ -255,6 +295,11 @@ export function App(props: { players: string[] }) {
         setScrollFromBottomRows(0);
         return;
       }
+      if (input === 'l') {
+        setView('LEDGER');
+        setScrollFromBottomRows(0);
+        return;
+      }
       return;
     }
 
@@ -293,6 +338,13 @@ export function App(props: { players: string[] }) {
 
     if (input === 'n') {
       setView('NOTEBOOKS');
+      // Reset scroll when switching views
+      setScrollFromBottomRows(0);
+      return;
+    }
+
+    if (input === 'l') {
+      setView('LEDGER');
       // Reset scroll when switching views
       setScrollFromBottomRows(0);
       return;
@@ -464,6 +516,93 @@ export function App(props: { players: string[] }) {
     return picked.length > 0 ? picked : [notebookMetrics[notebookMetrics.length - 1]?.line ?? ''];
   }, [notebookClampedScroll, logContentRows, notebookMetrics, notebookTotalRows]);
 
+  // Ledger content
+  const ledgerText = useMemo(() => {
+    const ledger = buildPublicLedger(entries);
+    return formatPublicLedger(ledger);
+  }, [entries]);
+
+  const ledgerLines = useMemo(() => {
+    if (!ledgerText) return [];
+    return ledgerText.split('\n');
+  }, [ledgerText]);
+
+  const ledgerMetrics = useMemo(() => {
+    return ledgerLines.map(line => ({
+      line,
+      rows: estimateWrappedLines(line, logContentWidth),
+    }));
+  }, [ledgerLines, logContentWidth]);
+
+  const ledgerTotalRows = useMemo(() => ledgerMetrics.reduce((acc, m) => acc + m.rows, 0), [ledgerMetrics]);
+  const ledgerMaxScroll = useMemo(() => Math.max(0, ledgerTotalRows - logContentRows), [ledgerTotalRows, logContentRows]);
+
+  useEffect(() => {
+    if (view === 'LEDGER') {
+      setScrollFromBottomRows(v => Math.min(ledgerMaxScroll, Number.isFinite(v) ? v : ledgerMaxScroll));
+    }
+  }, [ledgerMaxScroll, view]);
+
+  const ledgerClampedScroll = Math.min(scrollFromBottomRows, ledgerMaxScroll);
+
+  const visibleLedgerLines = useMemo(() => {
+    if (ledgerMetrics.length === 0) return [];
+    const endRowExclusive = Math.max(0, ledgerTotalRows - ledgerClampedScroll);
+    const startRowInclusive = Math.max(0, endRowExclusive - logContentRows);
+    const picked: string[] = [];
+    let cursor = 0;
+    for (const m of ledgerMetrics) {
+      const nextCursor = cursor + m.rows;
+      const overlaps = nextCursor > startRowInclusive && cursor < endRowExclusive;
+      if (overlaps) picked.push(m.line);
+      cursor = nextCursor;
+      if (cursor >= endRowExclusive) break;
+    }
+    return picked.length > 0 ? picked : [ledgerMetrics[ledgerMetrics.length - 1]?.line ?? ''];
+  }, [ledgerClampedScroll, logContentRows, ledgerMetrics, ledgerTotalRows]);
+
+  if (view === 'LEDGER') {
+    return (
+      <Box flexDirection="column" width={dimensions.columns} height={dimensions.rows} overflow="hidden">
+        <Box flexShrink={0}>
+          <Text bold>AI Mafia</Text>
+          <Text>  </Text>
+          <Text color="gray">View:</Text>
+          <Text> Ledger</Text>
+        </Box>
+        <Box>
+          <Text color="gray">Keys:</Text>
+          <Text> </Text>
+          <Text>n switch to Notes</Text>
+          <Text color="gray"> | </Text>
+          <Text>l switch to Log</Text>
+          <Text color="gray"> | </Text>
+          <Text>↑/↓ scroll</Text>
+          <Text color="gray"> | </Text>
+          <Text>Ctrl+C quit</Text>
+        </Box>
+        <Box
+          borderStyle="round"
+          flexDirection="column"
+          paddingX={1}
+          height={logBoxHeight}
+          overflow="hidden"
+          flexGrow={1}
+        >
+          {visibleLedgerLines.length > 0 ? (
+            visibleLedgerLines.map((line, idx) => (
+              <Text key={idx} wrap="wrap">
+                <Text>{line}</Text>
+              </Text>
+            ))
+          ) : (
+            <Text color="gray">No ledger data yet</Text>
+          )}
+        </Box>
+      </Box>
+    );
+  }
+
   if (view === 'NOTEBOOKS') {
     return (
       <Box flexDirection="column" width={dimensions.columns} height={dimensions.rows} overflow="hidden">
@@ -492,6 +631,8 @@ export function App(props: { players: string[] }) {
           <Text color="gray">Keys:</Text>
           <Text> </Text>
           <Text>n switch to Log</Text>
+          <Text color="gray"> | </Text>
+          <Text>l switch to Ledger</Text>
           <Text color="gray"> | </Text>
           <Text>↑/↓ select player</Text>
           <Text color="gray"> | </Text>
@@ -560,25 +701,27 @@ export function App(props: { players: string[] }) {
         <Text color="gray">Thoughts:</Text>
         <Text> {showThoughts ? 'on' : 'off'}</Text>
       </Box>
-      <Box>
-        <Text color="gray">Keys:</Text>
-        <Text> </Text>
+        <Box>
+          <Text color="gray">Keys:</Text>
+          <Text> </Text>
         <Text>t toggle thoughts</Text>
         <Text color="gray"> | </Text>
-        <Text>n notebooks</Text>
+        <Text>n notes</Text>
         <Text color="gray"> | </Text>
-        <Text>↑/↓ scroll</Text>
-        <Text color="gray"> | </Text>
-        <Text>pgUp/pgDn</Text>
-        <Text color="gray"> | </Text>
-        <Text>G top / g bottom</Text>
-        <Text color="gray"> | </Text>
-        <Text>p/] next POV</Text>
-        <Text color="gray"> | </Text>
-        <Text>[ prev POV</Text>
-        <Text color="gray"> | </Text>
-        <Text>Ctrl+C quit</Text>
-      </Box>
+        <Text>l ledger</Text>
+          <Text color="gray"> | </Text>
+          <Text>↑/↓ scroll</Text>
+          <Text color="gray"> | </Text>
+          <Text>pgUp/pgDn</Text>
+          <Text color="gray"> | </Text>
+          <Text>G top / g bottom</Text>
+          <Text color="gray"> | </Text>
+          <Text>p/] next POV</Text>
+          <Text color="gray"> | </Text>
+          <Text>[ prev POV</Text>
+          <Text color="gray"> | </Text>
+          <Text>Ctrl+C quit</Text>
+        </Box>
       <Box
         borderStyle="round"
         flexDirection="column"

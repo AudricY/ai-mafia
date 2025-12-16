@@ -1,6 +1,7 @@
 import { generateText, CoreMessage, gateway } from 'ai';
 import { PlayerConfig, Role, LogType, GameLogEntry } from './types.js';
 import { logger } from './logger.js';
+import { buildPublicLedger, formatPublicLedger } from './publicLedger.js';
 
 function isDryRun(): boolean {
   const v = (process.env.AI_MAFIA_DRY_RUN ?? process.env.DRY_RUN ?? '').toLowerCase().trim();
@@ -65,6 +66,9 @@ export class Agent {
   // Public, shared-by-all info (bounded, raw-ish).
   private publicWindow: CoreMessage[] = [];
 
+  // All public entries observed (for ledger building - unbounded but typically small)
+  private publicEntries: GameLogEntry[] = [];
+
   // Private, per-agent memory: append-only notebook (capped to last 12,000 chars).
   private privateNotebook = '';
 
@@ -119,10 +123,22 @@ export class Agent {
     this.factionMemory = memory;
   }
 
-  observePublicEvent(entry: Pick<GameLogEntry, 'type' | 'player' | 'content'>) {
+  observePublicEvent(entry: Pick<GameLogEntry, 'type' | 'player' | 'content' | 'metadata' | 'id' | 'timestamp'>) {
     const msg = this.toCoreMessage(entry);
     if (!msg) return;
     this.publicWindow.push(msg);
+    
+    // Store full entry for ledger building
+    // The entry from broadcastPublicEvent already has id/timestamp, so we can store it directly
+    const fullEntry: GameLogEntry = {
+      id: entry.id ?? '',
+      timestamp: entry.timestamp ?? new Date().toISOString(),
+      type: entry.type,
+      player: entry.player,
+      content: entry.content,
+      metadata: entry.metadata,
+    };
+    this.publicEntries.push(fullEntry);
   }
 
   observePrivateEvent(text: string) {
@@ -234,6 +250,10 @@ ${systemConstraints ? `\n${systemConstraints.trim()}\n` : ''}
   }
 
   private buildMemoryUserMessage(situationalContext: string, decisionConstraints?: string): CoreMessage[] {
+    // Build persistent public ledger from all observed public entries
+    const ledger = buildPublicLedger(this.publicEntries);
+    const ledgerText = formatPublicLedger(ledger);
+
     // Cap public window - drop overflow instead of summarizing
     const publicLines = this.publicWindow
       .slice(-this.memoryConfig.publicWindowSize)
@@ -250,6 +270,7 @@ ${systemConstraints ? `\n${systemConstraints.trim()}\n` : ''}
     const notebookTail = this.privateNotebook.trim();
 
     const memoryBlock = [
+      ledgerText ? `Public ledger (persistent):\n${ledgerText}` : '',
       notebookTail ? `Private notebook (tail):\n${notebookTail}` : '',
       factionSummary ? `Faction shared summary:\n${factionSummary}` : '',
       factionLines.length ? `Faction recent events:\n- ${factionLines.join('\n- ')}` : '',

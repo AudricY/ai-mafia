@@ -180,7 +180,7 @@ export class GameEngine {
     return this.getAlivePlayers().map(p => p.config.name);
   }
 
-  broadcastPublicEvent(entry: Pick<GameLogEntry, 'type' | 'player' | 'content'>) {
+  broadcastPublicEvent(entry: Pick<GameLogEntry, 'type' | 'player' | 'content' | 'metadata' | 'id' | 'timestamp'>) {
     for (const [name, ps] of Object.entries(this.state.players)) {
       if (!ps.isAlive) continue;
       this.agents[name]?.observePublicEvent(entry);
@@ -191,7 +191,12 @@ export class GameEngine {
     // Mark as public so the UI can render "player POV" views correctly.
     const entryWithVisibility: Omit<GameLogEntry, 'id' | 'timestamp'> = {
       ...entry,
-      metadata: { ...(entry.metadata ?? {}), visibility: 'public' },
+      metadata: { 
+        ...(entry.metadata ?? {}), 
+        visibility: 'public',
+        day: this.state.round,
+        phase: this.state.phase,
+      },
     };
     const fullEntry = logger.log(entryWithVisibility);
     this.state.history.push(fullEntry);
