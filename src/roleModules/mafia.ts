@@ -26,16 +26,17 @@ export async function runMafiaDiscussion(
   // On Night 1, post randomization picks as a system message in faction chat
   if (engine.state.round === 1) {
     const randomPicks: string[] = [];
-    
+    let killTarget: string | null = null;
+
     // Get random kill target
     if (opts.validKillTargets && opts.validKillTargets.length > 0) {
-      const killTarget = engine.getNight1RandomTarget({
+      killTarget = engine.getNight1RandomTarget({
         actor: mafiaTeam[0]!.config.name, // Use first member as representative for shared kill decision
         decisionKind: 'mafia_kill',
         candidateTargets: opts.validKillTargets,
       });
-      if (killTarget) {
-        randomPicks.push(`Kill target (if choosing randomly): ${killTarget}`);
+      if (killTarget !== null) {
+        randomPicks.push(`Kill target (if choosing randomly): ${killTarget!}`);
       }
     }
 
@@ -44,10 +45,20 @@ export async function runMafiaDiscussion(
     if (hasMafiaRoleblocker && opts.validNonMafiaTargets && opts.validNonMafiaTargets.length > 0) {
       const mafiaRoleblocker = mafiaTeam.find(p => p.role === 'mafia_roleblocker');
       if (mafiaRoleblocker) {
+        // Prefer a block target that is DIFFERENT from the kill target to avoid
+        // wasting the block on someone who is already being killed.
+        let blockCandidates = opts.validNonMafiaTargets;
+        if (typeof killTarget === 'string') {
+          const filtered = blockCandidates.filter(t => t !== killTarget);
+          if (filtered.length > 0) {
+            blockCandidates = filtered;
+          }
+        }
+
         const blockTarget = engine.getNight1RandomTarget({
           actor: mafiaRoleblocker.config.name,
           decisionKind: 'block',
-          candidateTargets: opts.validNonMafiaTargets,
+          candidateTargets: blockCandidates,
         });
         if (blockTarget) {
           randomPicks.push(`Block target (if choosing randomly): ${blockTarget}`);

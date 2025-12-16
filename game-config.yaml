@@ -8,39 +8,39 @@ log_thoughts: true
 
 players:
   - name: "Alice"
-    model: "xai/grok-4.1-fast-reasoning"
+    model: "xai/grok-4-fast-reasoning"
     systemPrompt: |
       it is a very good idea to pretend to be a vanilla villager.
 
   - name: "Bob"
-    model: "xai/grok-4.1-fast-reasoning"
+    model: "xai/grok-4-fast-reasoning"
 
   - name: "Charlie"
-    model: "xai/grok-4.1-fast-reasoning"
+    model: "xai/grok-4-fast-reasoning"
 
   - name: "Dave"
-    model: "xai/grok-4.1-fast-reasoning"
+    model: "deepseek/deepseek-v3.2"
     
   - name: "Eve"
-    model: "xai/grok-4.1-fast-reasoning"
+    model: "deepseek/deepseek-v3.2"
 
   - name: "Frank"
-    model: "xai/grok-4.1-fast-reasoning"
+    model: "deepseek/deepseek-v3.2"
 
   - name: "Grace"
-    model: "xai/grok-4.1-fast-reasoning"
+    model: "deepseek/deepseek-v3.2"
   
   - name: "Henry"
-    model: "xai/grok-4.1-fast-reasoning"
+    model: "deepseek/deepseek-v3.2"
 
   - name: "Ivy"
-    model: "xai/grok-4.1-fast-reasoning"
+    model: "deepseek/deepseek-v3.2"
 
   - name: "Judy"
-    model: "xai/grok-4.1-fast-reasoning"
+    model: "deepseek/deepseek-v3.2"
 
   - name: "Kyle"
-    model: "xai/grok-4.1-fast-reasoning"
+    model: "deepseek/deepseek-v3.2"
 
 roles:
   Alice: godfather          # mafia
