@@ -125,8 +125,11 @@ export class GameLogger {
   }
 
   private enrichEntry(entry: GameLogEntry): GameLogEntry {
+    // Only infer role if it's not explicitly set in metadata
+    // Check property existence: if 'role' is in metadata (even if undefined), don't infer
+    const hasRoleProperty = entry.metadata && 'role' in entry.metadata;
     const inferredRole: Role | undefined =
-      entry.player && !entry.metadata?.role ? this.playerRoles.get(entry.player) : undefined;
+      entry.player && !hasRoleProperty ? this.playerRoles.get(entry.player) : undefined;
     if (inferredRole === undefined) return entry;
     return {
       ...entry,

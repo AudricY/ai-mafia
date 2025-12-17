@@ -93,10 +93,43 @@ export function resolveNightActions(input: NightResolutionInput): ResolvedNightA
     appliedBlocks.add(jail.actor);
   }
 
-  // Then apply regular blocks, sorted by priority (roleblocker > mafia_roleblocker).
+  // Then apply regular blocks.
+  // Two-phase resolution: first determine which blockers are blocked, then apply only unblocked blocks.
+  // Blocks resolve simultaneously: if a blocker is blocked, their block doesn't apply (regardless of priority).
   blockActions.sort((a, b) => b.priority - a.priority);
+  
+  // Phase 1: Determine which blockers are blocked (considering jails and all blocks)
+  // Use fixed-point iteration to handle mutual blocking correctly
+  const blockedBlockers = new Set<string>();
+  // First, add blockers who are jailed (jailkeeper has highest priority and always applies first)
+  for (const jail of jailActions) {
+    blockedBlockers.add(jail.target);
+  }
+  
+  // Iterate until fixed point: a blocker is blocked if targeted by an unblocked blocker
+  // (Priority only affects the order blocks are applied, not who can block whom)
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const block of blockActions) {
+      if (blockedBlockers.has(block.actor)) continue;
+      
+      const isBlocked = blockActions.some(
+        otherBlock =>
+          otherBlock.target === block.actor &&
+          otherBlock.actor !== block.actor &&
+          !blockedBlockers.has(otherBlock.actor) // The blocking blocker must not be blocked
+      );
+      if (isBlocked && !blockedBlockers.has(block.actor)) {
+        blockedBlockers.add(block.actor);
+        changed = true;
+      }
+    }
+  }
+  
+  // Phase 2: Apply only blocks from unblocked blockers (in priority order for consistency)
   for (const block of blockActions) {
-    if (blockedPlayers.has(block.actor)) continue;
+    if (blockedBlockers.has(block.actor)) continue;
     blockedPlayers.add(block.target);
     appliedBlocks.add(block.actor);
   }

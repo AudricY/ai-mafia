@@ -106,6 +106,27 @@ test('resolveNightActions: blockable blocks with priority', () => {
   assert.ok(!resolved.savedPlayers.has('Town')); // Doctor was blocked, so no save
 });
 
+test('resolveNightActions: mafia roleblocker blocks roleblocker, roleblocker blocks someone', () => {
+  const rolesByPlayer: Record<string, Role> = {
+    Rb: 'roleblocker',
+    MafRb: 'mafia_roleblocker',
+    Someone: 'villager',
+  };
+
+  // Mafia roleblocker blocks roleblocker, roleblocker blocks someone
+  // Expected: Blocks resolve simultaneously. Roleblocker is blocked, so their block on Someone doesn't apply.
+  // Someone is NOT blocked.
+  const actions: NightActionIntent[] = [
+    { kind: 'block', actor: 'MafRb', target: 'Rb' },
+    { kind: 'block', actor: 'Rb', target: 'Someone' },
+  ];
+
+  const resolved = resolveNightActions({ actions, rolesByPlayer, alivePlayers: Object.keys(rolesByPlayer) });
+  assert.ok(resolved.blockedPlayers.has('Rb')); // Roleblocker is blocked by mafia roleblocker
+  assert.ok(!resolved.blockedPlayers.has('Someone')); // Someone is NOT blocked (roleblocker was blocked)
+  assert.ok(!resolved.blockedPlayers.has('MafRb')); // Mafia roleblocker is not blocked
+});
+
 test('resolveNightActions: tracker sees successful visits only', () => {
   const rolesByPlayer: Record<string, Role> = {
     Tracker: 'tracker',

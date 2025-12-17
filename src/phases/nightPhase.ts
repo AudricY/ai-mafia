@@ -107,6 +107,47 @@ export class NightPhase {
         const override = resolved.deathRevealOverrides.find(o => o.player === player);
         const revealedRole = override ? override.revealedRole : undefined;
 
+        // If janitor successfully cleaned this victim, notify janitor and mafia team of actual role
+        if (override && override.revealedRole === null) {
+          // This was cleaned by janitor (null = unknown to public)
+          const cleanAction = actions.find(
+            a => a.kind === 'clean' && a.target === player && !resolved.blockedPlayers.has(a.actor)
+          );
+          if (cleanAction) {
+            const actualRole = rolesByPlayer[player];
+            const janitorName = cleanAction.actor;
+            
+            // Notify janitor privately
+            engine.agents[janitorName]?.observePrivateEvent(
+              `You successfully cleaned ${player}'s body. Their actual role was ${actualRole}.`
+            );
+            
+            // Notify mafia team via faction event
+            const alivePlayers = engine.getAlivePlayers();
+            const mafiaTeam = alivePlayers.filter(
+              p =>
+                p.role === 'mafia' ||
+                p.role === 'godfather' ||
+                p.role === 'mafia_roleblocker' ||
+                p.role === 'framer' ||
+                p.role === 'janitor' ||
+                p.role === 'forger'
+            );
+            mafiaTeam.forEach(m => {
+              engine.agents[m.config.name]?.observeFactionEvent(
+                `Our janitor (${janitorName}) successfully cleaned ${player}'s body. Their actual role was ${actualRole}.`
+              );
+            });
+            
+            logger.log({
+              type: 'ACTION',
+              player: janitorName,
+              content: `learned that ${player}'s actual role was ${actualRole} while cleaning`,
+              metadata: { target: player, actualRole, role: 'janitor', faction: 'mafia', visibility: 'faction' },
+            });
+          }
+        }
+
         engine.killPlayer(player, revealedRole);
         engine.recordPublic({ type: 'SYSTEM', content: `${player} died during the night.` });
       }

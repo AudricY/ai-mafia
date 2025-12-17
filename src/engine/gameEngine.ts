@@ -232,6 +232,8 @@ export class GameEngine {
       this.state.players[name].isAlive = false;
       const roleToReveal = revealedRole !== undefined ? revealedRole : this.state.players[name].role;
       if (roleToReveal === null) {
+        // Explicitly set role to undefined to mark it as unknown (janitor cleaned)
+        // The logger will respect this and not infer the role
         this.recordPublic({
           type: 'DEATH',
           player: name,
