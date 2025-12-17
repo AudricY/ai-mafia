@@ -250,11 +250,6 @@ export class GameEngine {
   }
 
   checkWin(): boolean {
-    // If Jester already won (instant win), don't overwrite it
-    if (this.state.winners === 'jester') {
-      return true;
-    }
-
     const alive = this.getAlivePlayers();
     const mafiaCount = alive.filter(
       p =>

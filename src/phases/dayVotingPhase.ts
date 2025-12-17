@@ -61,20 +61,21 @@ export class DayVotingPhase {
       const eliminatedPlayer = engine.state.players[candidate];
       const eliminatedRole = eliminatedPlayer?.role;
       
-      // Check for Jester instant win
-      if (eliminatedRole === 'jester') {
-        engine.killPlayer(candidate);
-        engine.state.winners = 'jester';
-        engine.state.neutralWinners = [candidate];
-        engine.recordPublic({
-          type: 'WIN',
-          content: `Game Over! ${candidate} (Jester) wins by being eliminated!`,
-        });
-        engine.state.phase = 'game_over';
-        return;
-      }
-      
       engine.killPlayer(candidate);
+      
+      // Check for Jester win (game continues)
+      if (eliminatedRole === 'jester') {
+        if (!engine.state.neutralWinners) {
+          engine.state.neutralWinners = [];
+        }
+        if (!engine.state.neutralWinners.includes(candidate)) {
+          engine.state.neutralWinners.push(candidate);
+        }
+        engine.recordPublic({
+          type: 'SYSTEM',
+          content: `${candidate} (Jester) wins by being eliminated! The game continues.`,
+        });
+      }
       
       // Check for Executioner co-win
       if (engine.state.executionerTargetByPlayer) {

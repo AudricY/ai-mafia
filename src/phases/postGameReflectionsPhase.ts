@@ -54,19 +54,26 @@ export class PostGameReflectionsPhase {
       let won = false;
       let winDescription = '';
       
+      // Check if player is a jester winner (from neutralWinners)
+      const isJesterWinner = role === 'jester' && (engine.state.neutralWinners?.includes(name) ?? false);
+      
       if (winners === 'jester') {
         won = engine.state.neutralWinners?.includes(name) ?? false;
         winDescription = won ? `${name} (Jester) won` : 'Jester won';
+      } else if (isJesterWinner) {
+        // Jester won but game continued (winners !== 'jester')
+        won = true;
+        winDescription = `${name} (Jester) won (co-win)`;
       } else if (winners === 'mafia') {
         const isMafiaRole = role === 'mafia' || role === 'godfather' || role === 'mafia_roleblocker' || role === 'framer' || role === 'janitor' || role === 'forger';
-        won = isMafiaRole || (engine.state.neutralWinners?.includes(name) ?? false);
+        won = isMafiaRole || (engine.state.neutralWinners?.includes(name) ?? false) || isJesterWinner;
         winDescription = 'Mafia won';
         if (engine.state.neutralWinners && engine.state.neutralWinners.length > 0) {
           winDescription += ` (Neutral co-winners: ${engine.state.neutralWinners.join(', ')})`;
         }
       } else if (winners === 'villagers') {
         const isMafiaRole = role === 'mafia' || role === 'godfather' || role === 'mafia_roleblocker' || role === 'framer' || role === 'janitor' || role === 'forger';
-        won = !isMafiaRole || (engine.state.neutralWinners?.includes(name) ?? false);
+        won = (!isMafiaRole || (engine.state.neutralWinners?.includes(name) ?? false)) || isJesterWinner;
         winDescription = 'Villagers won';
         if (engine.state.neutralWinners && engine.state.neutralWinners.length > 0) {
           winDescription += ` (Neutral co-winners: ${engine.state.neutralWinners.join(', ')})`;

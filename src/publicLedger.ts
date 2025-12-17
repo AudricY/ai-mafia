@@ -8,6 +8,7 @@ export interface PublicLedger {
     outcome: 'eliminate' | 'tie' | 'skip';
     eliminated?: string;
     tally: Record<string, number>;
+    voters: Record<string, string>;
   }>;
   win?: string;
 }
@@ -105,6 +106,7 @@ export function buildPublicLedger(entries: readonly GameLogEntry[]): PublicLedge
             outcome,
             eliminated,
             tally: { ...currentVotes },
+            voters: { ...currentVoters },
           });
         }
 
@@ -127,6 +129,7 @@ export function buildPublicLedger(entries: readonly GameLogEntry[]): PublicLedge
               outcome: 'eliminate',
               eliminated,
               tally: { ...currentVotes },
+              voters: { ...currentVoters },
             });
             currentDay = null;
             currentVotes = {};
@@ -139,6 +142,7 @@ export function buildPublicLedger(entries: readonly GameLogEntry[]): PublicLedge
             day: currentDay,
             outcome,
             tally: { ...currentVotes },
+            voters: { ...currentVoters },
           });
           currentDay = null;
           currentVotes = {};
@@ -179,6 +183,7 @@ export function buildPublicLedger(entries: readonly GameLogEntry[]): PublicLedge
       outcome,
       eliminated,
       tally: { ...currentVotes },
+      voters: { ...currentVoters },
     });
   }
 
@@ -217,12 +222,22 @@ export function formatPublicLedger(ledger: PublicLedger): string {
         .map(([target, count]) => `${target}: ${count}`)
         .join(', ');
       
+      const votersStr = Object.entries(summary.voters)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([voter, target]) => `${voter}→${target}`)
+        .join(', ');
+      
       if (summary.outcome === 'eliminate' && summary.eliminated) {
         lines.push(`  Day ${summary.day}: Eliminated ${summary.eliminated} (${tallyStr})`);
+        lines.push(`    Votes: ${votersStr}`);
       } else if (summary.outcome === 'tie') {
         lines.push(`  Day ${summary.day}: Tie (${tallyStr})`);
+        lines.push(`    Votes: ${votersStr}`);
       } else {
         lines.push(`  Day ${summary.day}: Skip (${tallyStr})`);
+        if (votersStr) {
+          lines.push(`    Votes: ${votersStr}`);
+        }
       }
     }
   }

@@ -117,9 +117,9 @@ export const ROLE_DEFINITIONS: Record<Role, RoleDefinition> = {
   jester: {
     role: 'jester',
     team: 'neutral',
-    summary: 'Wins if eliminated by day vote. Game ends immediately.',
+    summary: 'Wins if eliminated by day vote. Game continues.',
     abilities: ['No night action.'],
-    notes: ['If you are eliminated during the day voting phase, you win and the game ends immediately.'],
+    notes: ['If you are eliminated during the day voting phase, you win but the game continues.'],
   },
   executioner: {
     role: 'executioner',
@@ -148,7 +148,7 @@ export function formatRoleSetupForPrompt(roleCounts: Partial<Record<Role, number
   const neutralRoles = selected.filter(r => ROLE_DEFINITIONS[r]?.team === 'neutral');
   const neutralWinConditions: string[] = [];
   if (neutralRoles.includes('jester')) {
-    neutralWinConditions.push('- Jester: get eliminated by day vote (game ends immediately).');
+    neutralWinConditions.push('- Jester: get eliminated by day vote (co-win, game continues).');
   }
   if (neutralRoles.includes('executioner')) {
     neutralWinConditions.push('- Executioner: get your assigned target eliminated by day vote (co-win, game continues).');
@@ -194,7 +194,7 @@ export function formatPossibleRolesForPrompt(
   const neutralRoles = uniqueRoles.filter(r => ROLE_DEFINITIONS[r]?.team === 'neutral');
   const neutralWinConditions: string[] = [];
   if (neutralRoles.includes('jester')) {
-    neutralWinConditions.push('- Jester: get eliminated by day vote (game ends immediately).');
+    neutralWinConditions.push('- Jester: get eliminated by day vote (co-win, game continues).');
   }
   if (neutralRoles.includes('executioner')) {
     neutralWinConditions.push('- Executioner: get your assigned target eliminated by day vote (co-win, game continues).');
