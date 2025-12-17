@@ -17,8 +17,6 @@ log_thoughts: true
 players:
   - name: "Alice"
     model: "openai/gpt-5.2"
-    systemPrompt: |
-      it is a very good idea to pretend to be a vanilla villager.
 
   - name: "Bob"
     model: "xai/grok-4.1-fast-reasoning"
