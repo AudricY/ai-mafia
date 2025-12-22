@@ -86,27 +86,131 @@ function getMetadataRole(entry: GameLogEntry): Role | undefined {
   return typeof v === 'string' ? (v as Role) : undefined;
 }
 
-function entryToPlainText(entry: GameLogEntry): string {
+type ColoredSpan = { text: string; color?: string; bold?: boolean };
+type ColoredLine = ColoredSpan[];
+
+function tokenizeEntry(entry: GameLogEntry): ColoredSpan[] {
   const role = getMetadataRole(entry);
   const time = formatTime(entry.timestamp);
-  const type = entry.type;
-  const player = entry.player;
+  const c = typeColor(entry.type);
+  const rc = roleColor(role);
 
-  const prefix = player ? `[${time}] [${type}] <${player}${role ? `:${role}` : ''}>: ` : `[${time}] [${type}]: `;
-  return `${prefix}${entry.content}`;
+  const spans: ColoredSpan[] = [];
+  spans.push({ text: `[${time}]`, color: 'gray' });
+  spans.push({ text: ' ' });
+  spans.push({ text: `[${entry.type}]`, color: c });
+
+  if (entry.player) {
+    spans.push({ text: ' ' });
+    spans.push({ text: `<${entry.player}`, color: 'yellow' });
+    if (role) {
+      spans.push({ text: `:${role}`, color: rc });
+    }
+    spans.push({ text: '>', color: 'yellow' });
+  }
+
+  spans.push({ text: `: ${entry.content}` });
+  return spans;
+}
+
+function wrapSpans(spans: ColoredSpan[], width: number): ColoredLine[] {
+  if (width <= 0) return [];
+  
+  const lines: ColoredLine[] = [];
+  let currentLine: ColoredLine = [];
+  let currentWidth = 0;
+
+  // Split spans into words/whitespace tokens
+  const tokens: ColoredSpan[] = [];
+  for (const span of spans) {
+    const parts = span.text.split(/(\s+)/);
+    for (const part of parts) {
+      if (part === '') continue;
+      tokens.push({ ...span, text: part });
+    }
+  }
+
+  for (const token of tokens) {
+    const isWhitespace = token.text.trim().length === 0 && !token.text.includes('\n');
+    const hasNewline = token.text.includes('\n');
+
+    if (hasNewline) {
+      const parts = token.text.split('\n');
+      for (let i = 0; i < parts.length; i++) {
+        if (i > 0) {
+          lines.push(currentLine);
+          currentLine = [];
+          currentWidth = 0;
+        }
+        const p = parts[i]!;
+        if (p.length > 0) {
+          // Wrap the part if it's too long
+          let remaining = p;
+          while (remaining.length > 0) {
+            const chunk = remaining.slice(0, width - currentWidth);
+            if (chunk.length === 0) {
+              lines.push(currentLine);
+              currentLine = [];
+              currentWidth = 0;
+              continue;
+            }
+            currentLine.push({ ...token, text: chunk });
+            currentWidth += chunk.length;
+            remaining = remaining.slice(chunk.length);
+            if (currentWidth >= width && remaining.length > 0) {
+              lines.push(currentLine);
+              currentLine = [];
+              currentWidth = 0;
+            }
+          }
+        }
+      }
+      continue;
+    }
+
+    if (currentWidth + token.text.length > width) {
+      if (isWhitespace) {
+        // Skip trailing whitespace that doesn't fit
+        lines.push(currentLine);
+        currentLine = [];
+        currentWidth = 0;
+      } else if (token.text.length > width) {
+        // Force break long word
+        let remaining = token.text;
+        if (currentWidth > 0) {
+          lines.push(currentLine);
+          currentLine = [];
+          currentWidth = 0;
+        }
+        while (remaining.length > width) {
+          lines.push([{ ...token, text: remaining.slice(0, width) }]);
+          remaining = remaining.slice(width);
+        }
+        currentLine.push({ ...token, text: remaining });
+        currentWidth = remaining.length;
+      } else {
+        // Normal wrap
+        lines.push(currentLine);
+        currentLine = [{ ...token }];
+        currentWidth = token.text.length;
+      }
+    } else {
+      currentLine.push({ ...token });
+      currentWidth += token.text.length;
+    }
+  }
+
+  if (currentLine.length > 0) {
+    lines.push(currentLine);
+  }
+
+  return lines.length > 0 ? lines : [[]];
 }
 
 function estimateWrappedLines(text: string, width: number): number {
   if (width <= 0) return 0;
-  // Ink can wrap on word boundaries; we approximate by character width.
-  // This is only used to decide how many tail entries to render.
-  const parts = text.split('\n');
-  let lines = 0;
-  for (const p of parts) {
-    const len = p.length;
-    lines += Math.max(1, Math.ceil(len / width));
-  }
-  return lines;
+  // This is now only used for header and notebook/ledger which we'll also update
+  return wrapSpans([{ text }], width).length;
 }
 
 export interface AppProps {
@@ -431,16 +535,25 @@ export function App({ players, initialEntries = [], live = true, title }: AppPro
   // Keep the header pinned by ensuring the log area never exceeds the terminal height.
   // With wrapping enabled, a single entry can span multiple terminal rows, so we estimate
   // row usage and only render the tail that fits.
-  const headerRows = 2;
+  const headerLine1 = `${title ?? 'AI Mafia'}  POV: ${headerPov}  Thoughts: ${showThoughts ? 'on' : 'off'}`;
+  const headerLine2 = `Keys: t toggle thoughts | n notes | l ledger | ↑/↓ scroll | pgUp/pgDn | G top / g bottom | p/] next POV | [ prev POV | Ctrl+C quit`;
+  const headerRows = useMemo(() => {
+    return estimateWrappedLines(headerLine1, dimensions.columns) + estimateWrappedLines(headerLine2, dimensions.columns);
+  }, [headerLine1, headerLine2, dimensions.columns]);
+
   const logBoxHeight = Math.max(3, dimensions.rows - headerRows);
   const logContentRows = Math.max(1, logBoxHeight - 2); // border top/bottom
   const logContentWidth = Math.max(10, dimensions.columns - 2 /* border */ - 2 /* paddingX */);
 
   const metrics = useMemo(() => {
-    return visibleEntries.map(e => ({
-      entry: e,
-      rows: estimateWrappedLines(entryToPlainText(e), logContentWidth),
-    }));
+    return visibleEntries.map(e => {
+      const wrapped = wrapSpans(tokenizeEntry(e), logContentWidth);
+      return {
+        entry: e,
+        rows: wrapped.length,
+        lines: wrapped,
+      };
+    });
   }, [visibleEntries, logContentWidth]);
 
   const totalRows = useMemo(() => metrics.reduce((acc, m) => acc + m.rows, 0), [metrics]);
@@ -463,26 +576,30 @@ export function App({ players, initialEntries = [], live = true, title }: AppPro
 
   const clampedScrollFromBottom = Math.min(scrollFromBottomRows, maxScrollFromBottom);
 
-  const lines = useMemo(() => {
+  const visibleRows = useMemo(() => {
     if (metrics.length === 0) return [];
 
-    // We treat the log as a long list of "rows" (wrapped lines).
     const endRowExclusive = Math.max(0, totalRows - clampedScrollFromBottom);
     const startRowInclusive = Math.max(0, endRowExclusive - logContentRows);
 
-    const picked: GameLogEntry[] = [];
+    const rows: ColoredLine[] = [];
     let cursor = 0;
     for (const m of metrics) {
       const nextCursor = cursor + m.rows;
-      const overlaps = nextCursor > startRowInclusive && cursor < endRowExclusive;
-      if (overlaps) picked.push(m.entry);
+      if (nextCursor > startRowInclusive && cursor < endRowExclusive) {
+        // This entry is at least partially visible
+        for (let i = 0; i < m.rows; i++) {
+          const rowIdx = cursor + i;
+          if (rowIdx >= startRowInclusive && rowIdx < endRowExclusive) {
+            rows.push(m.lines[i]!);
+          }
+        }
+      }
       cursor = nextCursor;
       if (cursor >= endRowExclusive) break;
     }
 
-    // Always show at least one entry if any exist (helps when a single entry is huge).
-    if (picked.length === 0) return [metrics[metrics.length - 1]!.entry];
-    return picked;
+    return rows;
   }, [clampedScrollFromBottom, logContentRows, metrics, totalRows]);
 
   // Notebook content for selected player
@@ -496,13 +613,17 @@ export function App({ players, initialEntries = [], live = true, title }: AppPro
     const lines = selectedNotebook.split('\n');
     const playerListWidth = 20;
     const notebookWidth = Math.max(10, dimensions.columns - playerListWidth - 4 /* borders/padding */);
-    return lines.map(line => ({
-      line,
-      rows: estimateWrappedLines(line, notebookWidth),
-    }));
+    return lines.flatMap(line => {
+      const wrapped = wrapSpans([{ text: line }], notebookWidth);
+      return wrapped.map(w => ({
+        line, // original line
+        rows: 1,
+        wrapped: w,
+      }));
+    });
   }, [selectedNotebook, dimensions.columns]);
 
-  const notebookTotalRows = useMemo(() => notebookMetrics.reduce((acc, m) => acc + m.rows, 0), [notebookMetrics]);
+  const notebookTotalRows = useMemo(() => notebookMetrics.length, [notebookMetrics]);
   const notebookMaxScroll = useMemo(() => Math.max(0, notebookTotalRows - logContentRows), [notebookTotalRows, logContentRows]);
 
   useEffect(() => {
@@ -511,20 +632,18 @@ export function App({ players, initialEntries = [], live = true, title }: AppPro
 
   const notebookClampedScroll = Math.min(scrollFromBottomRows, notebookMaxScroll);
 
-  const notebookLines = useMemo(() => {
+  const notebookRows = useMemo(() => {
     if (notebookMetrics.length === 0) return [];
     const endRowExclusive = Math.max(0, notebookTotalRows - notebookClampedScroll);
     const startRowInclusive = Math.max(0, endRowExclusive - logContentRows);
-    const picked: string[] = [];
-    let cursor = 0;
-    for (const m of notebookMetrics) {
-      const nextCursor = cursor + m.rows;
-      const overlaps = nextCursor > startRowInclusive && cursor < endRowExclusive;
-      if (overlaps) picked.push(m.line);
-      cursor = nextCursor;
-      if (cursor >= endRowExclusive) break;
+    
+    const rows: ColoredLine[] = [];
+    for (let i = startRowInclusive; i < endRowExclusive; i++) {
+      if (notebookMetrics[i]) {
+        rows.push(notebookMetrics[i]!.wrapped);
+      }
     }
-    return picked.length > 0 ? picked : [notebookMetrics[notebookMetrics.length - 1]?.line ?? ''];
+    return rows;
   }, [notebookClampedScroll, logContentRows, notebookMetrics, notebookTotalRows]);
 
   // Ledger content
@@ -539,13 +658,17 @@ export function App({ players, initialEntries = [], live = true, title }: AppPro
   }, [ledgerText]);
 
   const ledgerMetrics = useMemo(() => {
-    return ledgerLines.map(line => ({
-      line,
-      rows: estimateWrappedLines(line, logContentWidth),
-    }));
+    return ledgerLines.flatMap(line => {
+      const wrapped = wrapSpans([{ text: line }], logContentWidth);
+      return wrapped.map(w => ({
+        line,
+        rows: 1,
+        wrapped: w,
+      }));
+    });
   }, [ledgerLines, logContentWidth]);
 
-  const ledgerTotalRows = useMemo(() => ledgerMetrics.reduce((acc, m) => acc + m.rows, 0), [ledgerMetrics]);
+  const ledgerTotalRows = useMemo(() => ledgerMetrics.length, [ledgerMetrics]);
   const ledgerMaxScroll = useMemo(() => Math.max(0, ledgerTotalRows - logContentRows), [ledgerTotalRows, logContentRows]);
 
   useEffect(() => {
@@ -556,20 +679,18 @@ export function App({ players, initialEntries = [], live = true, title }: AppPro
 
   const ledgerClampedScroll = Math.min(scrollFromBottomRows, ledgerMaxScroll);
 
-  const visibleLedgerLines = useMemo(() => {
+  const ledgerRows = useMemo(() => {
     if (ledgerMetrics.length === 0) return [];
     const endRowExclusive = Math.max(0, ledgerTotalRows - ledgerClampedScroll);
     const startRowInclusive = Math.max(0, endRowExclusive - logContentRows);
-    const picked: string[] = [];
-    let cursor = 0;
-    for (const m of ledgerMetrics) {
-      const nextCursor = cursor + m.rows;
-      const overlaps = nextCursor > startRowInclusive && cursor < endRowExclusive;
-      if (overlaps) picked.push(m.line);
-      cursor = nextCursor;
-      if (cursor >= endRowExclusive) break;
+    
+    const rows: ColoredLine[] = [];
+    for (let i = startRowInclusive; i < endRowExclusive; i++) {
+      if (ledgerMetrics[i]) {
+        rows.push(ledgerMetrics[i]!.wrapped);
+      }
     }
-    return picked.length > 0 ? picked : [ledgerMetrics[ledgerMetrics.length - 1]?.line ?? ''];
+    return rows;
   }, [ledgerClampedScroll, logContentRows, ledgerMetrics, ledgerTotalRows]);
 
   if (view === 'LEDGER') {
@@ -600,15 +721,21 @@ export function App({ players, initialEntries = [], live = true, title }: AppPro
           overflow="hidden"
           flexGrow={1}
         >
-          {visibleLedgerLines.length > 0 ? (
-            visibleLedgerLines.map((line, idx) => (
-              <Text key={idx} wrap="wrap">
-                <Text>{line}</Text>
-              </Text>
-            ))
-          ) : (
-            <Text color="gray">No ledger data yet</Text>
-          )}
+          <Box flexDirection="column">
+            {ledgerRows.length > 0 ? (
+              ledgerRows.map((row, idx) => (
+                <Text key={idx}>
+                  {row.map((span, sidx) => (
+                    <Text key={sidx} color={span.color} bold={span.bold}>
+                      {span.text}
+                    </Text>
+                  ))}
+                </Text>
+              ))
+            ) : (
+              <Text color="gray">No ledger data yet</Text>
+            )}
+          </Box>
         </Box>
       </Box>
     );
@@ -686,15 +813,21 @@ export function App({ players, initialEntries = [], live = true, title }: AppPro
             overflow="hidden"
             marginLeft={1}
           >
-            {selectedPlayer && selectedNotebook ? (
-              notebookLines.map((line, idx) => (
-                <Text key={idx} wrap="wrap">
-                  <Text>{line}</Text>
-                </Text>
-              ))
-            ) : (
-              <Text color="gray">No notebook entries for this player</Text>
-            )}
+            <Box flexDirection="column">
+              {selectedPlayer && selectedNotebook ? (
+                notebookRows.map((row, idx) => (
+                  <Text key={idx}>
+                    {row.map((span, sidx) => (
+                      <Text key={sidx} color={span.color} bold={span.bold}>
+                        {span.text}
+                      </Text>
+                    ))}
+                  </Text>
+                ))
+              ) : (
+                <Text color="gray">No notebook entries for this player</Text>
+              )}
+            </Box>
           </Box>
         </Box>
       </Box>
@@ -741,27 +874,17 @@ export function App({ players, initialEntries = [], live = true, title }: AppPro
         overflow="hidden"
         flexGrow={1}
       >
-        {lines.map(e => {
-          const role = getMetadataRole(e);
-          const time = formatTime(e.timestamp);
-          const c = typeColor(e.type);
-          const rc = roleColor(role);
-          return (
-            <Text key={e.id} wrap="wrap">
-              <Text color="gray">[{time}]</Text> <Text color={c}>{`[${e.type}]`}</Text>
-              {e.player ? (
-                <>
-                  <Text> </Text>
-                  <Text color="yellow">{`<${e.player}`}</Text>
-                  {role ? <Text color={rc}>{`:${role}`}</Text> : null}
-                  <Text color="yellow">&gt;</Text>
-                </>
-              ) : null}
-              <Text>: </Text>
-              <Text>{e.content}</Text>
+        <Box flexDirection="column">
+          {visibleRows.map((line, idx) => (
+            <Text key={idx}>
+              {line.map((span, sidx) => (
+                <Text key={sidx} color={span.color} bold={span.bold}>
+                  {span.text}
+                </Text>
+              ))}
             </Text>
-          );
-        })}
+          ))}
+        </Box>
       </Box>
     </Box>
   );
