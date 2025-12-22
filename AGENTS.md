@@ -42,9 +42,6 @@ Use dry-run to exercise the full game loop **without running any agents** (no AP
 - `player_order_seed` (optional): controls initial player turn order shuffling (useful for deterministic runs).
 
 
-## Repo Documentation Rule
-- **Do not create `README.md`**: all repo context, setup, and conventions must live in `AGENTS.md`.
-
 ## Conventions
 - **Async/Await**: Use for all AI calls.
 - **Error Handling**: Fail fast on invalid config. Graceful degradation on AI failures (retry/skip).

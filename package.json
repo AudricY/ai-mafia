@@ -18,8 +18,12 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
-  "description": "",
+  "license": "MIT",
+  "description": "An autonomous multi-agent social deduction game (Mafia/Werewolf) powered by the Vercel AI SDK.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/audricyap/ai-mafia.git"
+  },
   "dependencies": {
     "@ai-sdk/openai": "^2.0.86",
     "ai": "^5.0.113",
