@@ -12,7 +12,11 @@ test('dry-run harness: game runs to completion without abort', async () => {
 
   try {
     const config: GameConfig = {
-      rounds: 3,
+      discussion_open_floor: 1,
+      discussion_open_cap: 5,
+      discussion_open_per_player_base: 0.5,
+      discussion_open_per_player_round_bonus: 0.5,
+      rounds: 1,
       system_prompt: 'You are playing a game of Mafia.',
       players: [
         { name: 'Alice', model: 'openai/gpt-4o', temperature: 0.7 },
@@ -34,7 +38,9 @@ test('dry-run harness: game runs to completion without abort', async () => {
     };
 
     const engine = new GameEngine(config);
+    console.time('engine.start');
     await engine.start();
+    console.timeEnd('engine.start');
 
     assert.ok(engine.state.history.length > 0);
     assert.equal(engine.state.abortReason, undefined);

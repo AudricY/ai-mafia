@@ -78,64 +78,64 @@ export function resolveNightActions(input: NightResolutionInput): ResolvedNightA
     }
   }
 
-  // 1) Resolve blocks in priority order (highest priority first).
-  // Blocks are "blockable": if a blocker is already blocked, their block doesn't apply.
-  //
-  // IMPORTANT: Jailkeeper has highest priority; jails must apply before other blocks.
-  const appliedBlocks = new Set<string>(); // Track which blockers successfully applied their block
+  // 1. Resolve blocks and jails.
+  const allBlockActions = [
+    ...jailActions.map(j => ({ actor: j.actor, target: j.target, priority: 3, isJail: true })),
+    ...blockActions.map(b => ({ actor: b.actor, target: b.target, priority: b.priority, isJail: false }))
+  ];
 
-  // Apply jails first (priority 3). Jails both block and protect.
-  for (const jail of jailActions) {
-    if (blockedPlayers.has(jail.actor)) continue;
-    blockedPlayers.add(jail.target);
-    savedPlayers.add(jail.target);
-    jailedPlayers.add(jail.target);
-    appliedBlocks.add(jail.actor);
-  }
+  // We use a chain-and-cycle resolution.
+  const blockedBlockerNames = new Set<string>();
+  const unblockedBlockerNames = new Set<string>();
+  const remainingBlockerNames = new Set(allBlockActions.map(a => a.actor));
 
-  // Then apply regular blocks.
-  // Two-phase resolution: first determine which blockers are blocked, then apply only unblocked blocks.
-  // Blocks resolve simultaneously: if a blocker is blocked, their block doesn't apply (regardless of priority).
-  blockActions.sort((a, b) => b.priority - a.priority);
-  
-  // Phase 1: Determine which blockers are blocked (considering jails and all blocks)
-  // Use fixed-point iteration to handle mutual blocking correctly
-  const blockedBlockers = new Set<string>();
-  // First, add blockers who are jailed (jailkeeper has highest priority and always applies first)
-  for (const jail of jailActions) {
-    blockedBlockers.add(jail.target);
-  }
-  
-  // Iterate until fixed point: a blocker is blocked if targeted by an unblocked blocker
-  // (Priority only affects the order blocks are applied, not who can block whom)
   let changed = true;
   while (changed) {
     changed = false;
-    for (const block of blockActions) {
-      if (blockedBlockers.has(block.actor)) continue;
+    for (const actor of [...remainingBlockerNames]) {
+      const blockersOfActor = allBlockActions.filter(a => a.target === actor);
       
-      const isBlocked = blockActions.some(
-        otherBlock =>
-          otherBlock.target === block.actor &&
-          otherBlock.actor !== block.actor &&
-          !blockedBlockers.has(otherBlock.actor) // The blocking blocker must not be blocked
-      );
-      if (isBlocked && !blockedBlockers.has(block.actor)) {
-        blockedBlockers.add(block.actor);
+      // If ANY person blocking this actor is confirmed UNBLOCKED, then this actor is BLOCKED
+      if (blockersOfActor.some(b => unblockedBlockerNames.has(b.actor))) {
+        blockedBlockerNames.add(actor);
+        blockedPlayers.add(actor); // Actor is successfully blocked
+        remainingBlockerNames.delete(actor);
+        changed = true;
+      }
+      // If ALL people blocking this actor are confirmed BLOCKED, then this actor is UNBLOCKED
+      else if (blockersOfActor.every(b => blockedBlockerNames.has(b.actor))) {
+        unblockedBlockerNames.add(actor);
+        remainingBlockerNames.delete(actor);
         changed = true;
       }
     }
+
+    // If no changes but still have remaining, we have a cycle or mutual block.
+    if (!changed && remainingBlockerNames.size > 0) {
+      for (const actor of remainingBlockerNames) {
+        blockedBlockerNames.add(actor);
+        blockedPlayers.add(actor);
+      }
+      remainingBlockerNames.clear();
+      changed = true;
+    }
   }
-  
-  // Phase 2: Apply only blocks from unblocked blockers (in priority order for consistency)
-  for (const block of blockActions) {
-    if (blockedBlockers.has(block.actor)) continue;
-    blockedPlayers.add(block.target);
-    appliedBlocks.add(block.actor);
+
+  // Apply the effects of unblocked blocks and jails to their targets.
+  const appliedBlocks = new Set<string>();
+  for (const action of allBlockActions) {
+    if (blockedBlockerNames.has(action.actor)) continue;
+    
+    blockedPlayers.add(action.target);
+    appliedBlocks.add(action.actor);
+    
+    if (action.isJail) {
+      savedPlayers.add(action.target);
+      jailedPlayers.add(action.target);
+    }
   }
 
   // 1b) Effective actions
-  // Rule: if the Mafia killer is blocked, the kill fails (no backup shooter).
   const actionsForResolution: NightActionIntent[] = input.actions;
 
   // 2) Apply saves (blocked doctors don't save)
@@ -176,7 +176,6 @@ export function resolveNightActions(input: NightResolutionInput): ResolvedNightA
     if (k.blocked) continue;
     if (k.saved) continue;
     // Defensive: never allow mafia kill to kill a mafia-aligned player.
-    // (Other sources like vigilante or bomb retaliation are allowed to kill mafia.)
     if (k.source === 'mafia' && isMafiaRole(input.rolesByPlayer[k.target])) continue;
     deaths.add(k.target);
   }
@@ -185,7 +184,6 @@ export function resolveNightActions(input: NightResolutionInput): ResolvedNightA
   for (const d of [...deaths]) {
     const role = input.rolesByPlayer[d];
     if (role === 'bomb') {
-      // Find the kill that killed this bomb
       const killingAction = kills.find(
         k => !k.blocked && !k.saved && k.target === d
       );
@@ -197,21 +195,16 @@ export function resolveNightActions(input: NightResolutionInput): ResolvedNightA
   }
 
   // 8) Resolve tracker results (only successful visits)
-  // A "visit" is a successful targeted action (investigate, save, kill, block, jail, frame, track)
-  // We need to determine what the tracked player successfully did
   for (const track of trackActions) {
-    if (blockedPlayers.has(track.actor)) continue; // Blocked trackers don't track
+    if (blockedPlayers.has(track.actor)) continue;
 
     const trackedPlayer = track.target;
     let visited: string | null = null;
 
-    // Check if tracked player successfully performed any targeted action
-    // Priority: first successful action counts
     for (const a of actionsForResolution) {
       if (a.actor !== trackedPlayer) continue;
-      if (blockedPlayers.has(trackedPlayer)) break; // If tracked player was blocked, no visit
+      if (blockedPlayers.has(trackedPlayer)) break;
 
-      // Check if this action was successful
       let wasSuccessful = false;
       if (a.kind === 'investigate' && !blockedPlayers.has(a.actor)) {
         wasSuccessful = true;
@@ -236,14 +229,13 @@ export function resolveNightActions(input: NightResolutionInput): ResolvedNightA
         visited = a.target;
       }
 
-      if (wasSuccessful) break; // First successful action counts
+      if (wasSuccessful) break;
     }
 
     trackerResults.push({ actor: track.actor, target: trackedPlayer, visited });
   }
 
   // 9) Resolve death reveal overrides (janitor/forger)
-  // Only applies to mafia kills that actually killed someone
   const mafiaKills = kills.filter(
     k => k.source === 'mafia' && !k.blocked && !k.saved && deaths.has(k.target)
   );
@@ -251,7 +243,6 @@ export function resolveNightActions(input: NightResolutionInput): ResolvedNightA
   for (const kill of mafiaKills) {
     const victim = kill.target;
 
-    // Check for forger first (forger takes precedence)
     const forgeAction = forgeActions.find(
       f => !blockedPlayers.has(f.actor) && f.target === victim
     );
@@ -263,14 +254,13 @@ export function resolveNightActions(input: NightResolutionInput): ResolvedNightA
       continue;
     }
 
-    // Check for janitor
     const cleanAction = cleanActions.find(
       c => !blockedPlayers.has(c.actor) && c.target === victim
     );
     if (cleanAction) {
       deathRevealOverrides.push({
         player: victim,
-        revealedRole: null, // null = unknown
+        revealedRole: null,
       });
     }
   }
@@ -286,4 +276,3 @@ export function resolveNightActions(input: NightResolutionInput): ResolvedNightA
     deathRevealOverrides,
   };
 }
-
