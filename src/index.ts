@@ -3,20 +3,34 @@ import { Game } from './game.js';
 import { logger } from './logger.js';
 import * as path from 'path';
 import * as dotenv from 'dotenv';
+import { resolveReplayPath, loadReplayEntries, inferPlayers } from './replay/loadReplay.js';
 
 function parseArgs(argv: string[]): {
   configFile: string;
   dryRun: boolean;
   dryRunSeed?: number;
   ui: boolean;
+  replay?: string;
 } {
   let configFile: string | undefined;
   let dryRun = false;
   let dryRunSeed: number | undefined;
   let ui = true;
+  let replay: string | undefined;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
+
+    if (arg === '--replay') {
+      const next = argv[i + 1];
+      if (!next || next.startsWith('-')) {
+        replay = 'latest';
+      } else {
+        replay = next;
+        i++;
+      }
+      continue;
+    }
 
     // Conventional end-of-args marker (e.g. `pnpm start -- --dry-run`).
     if (arg === '--') {
@@ -61,7 +75,7 @@ function parseArgs(argv: string[]): {
     if (!configFile) configFile = arg;
   }
 
-  return { configFile: configFile ?? 'game-config.yaml', dryRun, dryRunSeed, ui };
+  return { configFile: configFile ?? 'game-config.yaml', dryRun, dryRunSeed, ui, replay };
 }
 
 async function main() {
@@ -69,6 +83,31 @@ async function main() {
   dotenv.config();
 
   const args = parseArgs(process.argv.slice(2));
+
+  if (args.replay) {
+    try {
+      const replayPath = resolveReplayPath(args.replay);
+      const entries = loadReplayEntries(replayPath);
+      const players = inferPlayers(entries);
+      const fileName = path.basename(replayPath);
+
+      logger.setConsoleOutputEnabled(false);
+      const ui = await import('./ui/runUi.js');
+      const uiInstance = ui.runUi({
+        players,
+        initialEntries: entries,
+        live: false,
+        title: `Replay: ${fileName}`,
+      });
+
+      await uiInstance.waitUntilExit();
+      return;
+    } catch (error) {
+      console.error('Replay Error:', error instanceof Error ? error.message : error);
+      process.exit(1);
+    }
+  }
+
   if (args.ui) {
     // We'll render through the Ink TUI instead of printing raw lines.
     // Note: we still write structured JSON logs to disk regardless.

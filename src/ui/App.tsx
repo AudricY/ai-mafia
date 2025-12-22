@@ -109,7 +109,14 @@ function estimateWrappedLines(text: string, width: number): number {
   return lines;
 }
 
-export function App(props: { players: string[] }) {
+export interface AppProps {
+  players: string[];
+  initialEntries?: GameLogEntry[];
+  live?: boolean;
+  title?: string;
+}
+
+export function App({ players, initialEntries = [], live = true, title }: AppProps) {
   const { exit } = useApp();
   const { stdout } = useStdout();
   const [dimensions, setDimensions] = useState(() => ({
@@ -121,15 +128,17 @@ export function App(props: { players: string[] }) {
   const [pov, setPov] = useState<PovMode>('ALL');
   const [view, setView] = useState<ViewMode>('LOG');
   const [selectedPlayer, setSelectedPlayer] = useState<string | null>(null);
-  const [entries, setEntries] = useState<GameLogEntry[]>(() => logger.getLogs());
+  const [entries, setEntries] = useState<GameLogEntry[]>(() =>
+    initialEntries.length > 0 ? initialEntries : logger.getLogs()
+  );
   const [playerRoles, setPlayerRoles] = useState<Record<string, Role>>({});
   const [scrollFromBottomRows, setScrollFromBottomRows] = useState(0);
   const prevTotalRowsRef = useRef<number>(0);
 
   const povOrder: PovMode[] = useMemo(() => {
-    const players = props.players.map(p => ({ player: p } as const));
-    return ['ALL', 'PUBLIC', ...players];
-  }, [props.players]);
+    const pList = players.map(p => ({ player: p } as const));
+    return ['ALL', 'PUBLIC', ...pList];
+  }, [players]);
 
   useEffect(() => {
     const onResize = () => {
@@ -151,9 +160,11 @@ export function App(props: { players: string[] }) {
     }
     setPlayerRoles(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [entries]); // In replay mode, entries might be provided once. In live mode, they are initially logger.getLogs().
 
   useEffect(() => {
+    if (!live) return;
+
     const unsub = logger.subscribe((e) => {
       setEntries(prev => {
         const next = [...prev, e];
@@ -205,10 +216,10 @@ export function App(props: { players: string[] }) {
 
   // Initialize selected player when switching to notebooks view
   useEffect(() => {
-    if (view === 'NOTEBOOKS' && !selectedPlayer && props.players.length > 0) {
-      setSelectedPlayer(props.players[0]!);
+    if (view === 'NOTEBOOKS' && !selectedPlayer && players.length > 0) {
+      setSelectedPlayer(players[0]!);
     }
-  }, [view, selectedPlayer, props.players]);
+  }, [view, selectedPlayer, players]);
 
   useInput((input, key) => {
     if (view === 'LEDGER') {
@@ -253,9 +264,9 @@ export function App(props: { players: string[] }) {
     if (view === 'NOTEBOOKS') {
       // Notebooks view controls
       if (key.upArrow && selectedPlayer) {
-        const idx = props.players.indexOf(selectedPlayer);
+        const idx = players.indexOf(selectedPlayer);
         if (idx > 0) {
-          setSelectedPlayer(props.players[idx - 1]!);
+          setSelectedPlayer(players[idx - 1]!);
           setScrollFromBottomRows(0);
         } else {
           // Scroll notebook content
@@ -264,9 +275,9 @@ export function App(props: { players: string[] }) {
         return;
       }
       if (key.downArrow && selectedPlayer) {
-        const idx = props.players.indexOf(selectedPlayer);
-        if (idx < props.players.length - 1) {
-          setSelectedPlayer(props.players[idx + 1]!);
+        const idx = players.indexOf(selectedPlayer);
+        if (idx < players.length - 1) {
+          setSelectedPlayer(players[idx + 1]!);
           setScrollFromBottomRows(0);
         } else {
           // Scroll notebook content
@@ -565,7 +576,7 @@ export function App(props: { players: string[] }) {
     return (
       <Box flexDirection="column" width={dimensions.columns} height={dimensions.rows} overflow="hidden">
         <Box flexShrink={0}>
-          <Text bold>AI Mafia</Text>
+          <Text bold>{title ?? 'AI Mafia'}</Text>
           <Text>  </Text>
           <Text color="gray">View:</Text>
           <Text> Ledger</Text>
@@ -607,7 +618,7 @@ export function App(props: { players: string[] }) {
     return (
       <Box flexDirection="column" width={dimensions.columns} height={dimensions.rows} overflow="hidden">
         <Box flexShrink={0}>
-          <Text bold>AI Mafia</Text>
+          <Text bold>{title ?? 'AI Mafia'}</Text>
           <Text>  </Text>
           <Text color="gray">View:</Text>
           <Text> Notebooks</Text>
@@ -650,7 +661,7 @@ export function App(props: { players: string[] }) {
             overflow="hidden"
             flexShrink={0}
           >
-            {props.players.map(player => {
+            {players.map(player => {
               const isSelected = player === selectedPlayer;
               const role = playerRoles[player];
               const noteCount = notebooks[player]?.length ?? 0;
@@ -693,7 +704,7 @@ export function App(props: { players: string[] }) {
   return (
     <Box flexDirection="column" width={dimensions.columns} height={dimensions.rows} overflow="hidden">
       <Box flexShrink={0}>
-        <Text bold>AI Mafia</Text>
+        <Text bold>{title ?? 'AI Mafia'}</Text>
         <Text>  </Text>
         <Text color="gray">POV:</Text>
         <Text> {headerPov}</Text>

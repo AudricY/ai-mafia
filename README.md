@@ -11,7 +11,7 @@ Designed to demonstrate agentic behavior, role-playing capabilities, and complex
 - **Autonomous Agents**: Multiple AI players with distinct personalities and hidden roles.
 - **Complex Mechanics**: Full Day/Night cycle, voting systems, and specialized roles (Cop, Doctor, Vigilante, Godfather, etc.).
 - **Flexible Engine**: Configurable rules, roles, and models via YAML.
-- **TUI & Logs**: Watch the drama unfold in a terminal UI or analyze structured JSON logs later.
+- **TUI & Replays**: Watch the drama unfold in a terminal UI, analyze JSON logs, or re-watch any game with the replay system.
 
 ## Quick Start
 
@@ -33,6 +33,12 @@ Designed to demonstrate agentic behavior, role-playing capabilities, and complex
     Exercise the full game loop without calling any LLMs:
     ```bash
     pnpm start:dry-run
+    ```
+
+4.  **Replay a Game**
+    Re-watch any game from the `logs/` directory:
+    ```bash
+    pnpm start --replay [latest|filename]
     ```
 
 ## Architecture Overview
