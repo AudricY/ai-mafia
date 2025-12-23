@@ -17,7 +17,7 @@
     "test": "node --import tsx --test src/*/*.test.ts"
   },
   "keywords": [],
-  "author": "",
+  "author": "Audric Yap",
   "license": "MIT",
   "description": "An autonomous multi-agent social deduction game (Mafia/Werewolf) powered by the Vercel AI SDK.",
   "repository": {

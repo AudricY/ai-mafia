@@ -4,6 +4,9 @@
 
 AI Mafia simulates a full game of Mafia (or Werewolf, etc.) where **every player is an AI agent**. Powered by the Vercel AI SDK, agents discuss, deduce, deceive, and eliminate each other in a battle of wits.
 
+<video src="assets/demo.mp4" controls="controls" style="max-width: 100%;">
+</video>
+
 Designed to demonstrate agentic behavior, role-playing capabilities, and complex multi-agent interaction.
 
 ## Features
