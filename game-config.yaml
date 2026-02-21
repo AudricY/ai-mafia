@@ -16,37 +16,37 @@ log_thoughts: true
 
 players:
   - name: "Alice"
-    model: "openai/gpt-5.2"
+    model: "anthropic/claude-sonnet-4.6"
 
   - name: "Bob"
-    model: "xai/grok-4.1-fast-reasoning"
+    model: "zai/glm-5"
 
   - name: "Charlie"
-    model: "xai/grok-4.1-fast-reasoning"
+    model: "moonshotai/kimi-k2.5"
 
   - name: "Dave"
-    model: "google/gemini-3-pro-preview"
+    model: "anthropic/claude-sonnet-4.6"
     
   - name: "Eve"
-    model: "xai/grok-4.1-fast-reasoning"
+    model: "zai/glm-5"
 
   - name: "Frank"
-    model: "xai/grok-4.1-fast-reasoning"
+    model: "moonshotai/kimi-k2.5"
 
   - name: "Grace"
-    model: "xai/grok-4.1-fast-reasoning"
-  
+    model: "zai/glm-5"
+
   - name: "Henry"
-    model: "xai/grok-4.1-fast-reasoning"
+    model: "moonshotai/kimi-k2.5"
 
   - name: "Ivy"
-    model: "openai/gpt-5.2"
+    model: "zai/glm-5"
 
   - name: "Judy"
-    model: "xai/grok-4.1-fast-reasoning"
+    model: "moonshotai/kimi-k2.5"
 
   - name: "Kyle"
-    model: "openai/gpt-5.2"
+    model: "zai/glm-5"
 
 roles:
   Alice: godfather          # mafia

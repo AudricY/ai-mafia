@@ -138,7 +138,9 @@ async function main() {
 
   try {
     const config = loadConfig(configPath);
-    const ui = args.ui ? (await import('./ui/runUi.js')).runUi({ players: config.players.map(p => p.name) }) : null;
+    const models: Record<string, string> = {};
+    for (const p of config.players) models[p.name] = p.model;
+    const ui = args.ui ? (await import('./ui/runUi.js')).runUi({ players: config.players.map(p => p.name), models }) : null;
     const game = new Game(config);
     const gamePromise = game.start();
 

@@ -215,9 +215,10 @@ export interface AppProps {
   initialEntries?: GameLogEntry[];
   live?: boolean;
   title?: string;
+  models?: Record<string, string>;
 }
 
-export function App({ players, initialEntries = [], live = true, title }: AppProps) {
+export function App({ players, initialEntries = [], live = true, title, models }: AppProps) {
   const { exit } = useApp();
   const { stdout } = useStdout();
   const [dimensions, setDimensions] = useState(() => ({
@@ -526,8 +527,12 @@ export function App({ players, initialEntries = [], live = true, title }: AppPro
     if (pov === 'ALL') return 'ALL';
     if (pov === 'PUBLIC') return 'PUBLIC';
     const r = playerRoles[pov.player];
-    return r ? `${pov.player} (${r})` : pov.player;
-  }, [pov, playerRoles]);
+    const m = models?.[pov.player];
+    const parts = [pov.player];
+    if (r) parts.push(`(${r})`);
+    if (m) parts.push(`[${m}]`);
+    return parts.join(' ');
+  }, [pov, playerRoles, models]);
 
   // Keep the header pinned by ensuring the log area never exceeds the terminal height.
   // With wrapping enabled, a single entry can span multiple terminal rows, so we estimate
@@ -608,7 +613,7 @@ export function App({ players, initialEntries = [], live = true, title }: AppPro
   const notebookMetrics = useMemo(() => {
     if (!selectedNotebook) return [];
     const lines = selectedNotebook.split('\n');
-    const playerListWidth = 20;
+    const playerListWidth = 30;
     const notebookWidth = Math.max(10, dimensions.columns - playerListWidth - 4 /* borders/padding */);
     return lines.flatMap(line => {
       const wrapped = wrapSpans([{ text: line }], notebookWidth);
@@ -759,6 +764,12 @@ export function App({ players, initialEntries = [], live = true, title }: AppPro
                   <Text color={roleColor(playerRoles[selectedPlayer])}>({playerRoles[selectedPlayer]})</Text>
                 </>
               ) : null}
+              {models?.[selectedPlayer] ? (
+                <>
+                  <Text> </Text>
+                  <Text color="gray">{models[selectedPlayer]}</Text>
+                </>
+              ) : null}
             </>
           ) : null}
         </Box>
@@ -779,7 +790,7 @@ export function App({ players, initialEntries = [], live = true, title }: AppPro
           {/* Player list */}
           <Box
             borderStyle="round"
-            width={20}
+            width={30}
             flexDirection="column"
             paddingX={1}
             overflow="hidden"
@@ -790,12 +801,14 @@ export function App({ players, initialEntries = [], live = true, title }: AppPro
               const role = playerRoles[player];
               const noteCount = notebooks[player]?.length ?? 0;
               const alive = isAlive(player);
+              const modelShort = models?.[player]?.split('/')[1];
               return (
                 <Text key={player} wrap="wrap">
                   {isSelected ? <Text color="cyan" bold>{'> '}</Text> : <Text>  </Text>}
                   <Text color={!alive ? 'gray' : isSelected ? 'cyan' : undefined}>{player}</Text>
                   {!alive ? <Text color="red"> (dead)</Text> : null}
                   {role ? <Text color={roleColor(role)}> ({role})</Text> : null}
+                  {modelShort ? <Text color="gray"> {modelShort}</Text> : null}
                   <Text color="gray"> ({noteCount})</Text>
                 </Text>
               );
