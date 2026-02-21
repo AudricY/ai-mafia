@@ -1,62 +1,83 @@
-# AI Mafia: Game Logic & Rules
+# Game Logic & Rules
 
-This document describes the rules, roles, and flow of the AI Mafia game simulation.
+## Win Conditions
 
-## 🎯 Objective
-The game is a battle between the **Town** (majority) and the **Mafia** (minority).
-- **Town Win Condition**: Eliminate all Mafia members.
-- **Mafia Win Condition**: Equal or outnumber the Town members.
+| Team | Condition |
+|---|---|
+| **Town** | Eliminate all Mafia-aligned players |
+| **Mafia** | Equal or outnumber Town |
+| **Jester** | Get eliminated by day vote (co-win, game continues) |
+| **Executioner** | Get assigned target eliminated by day vote (co-win, game continues). If target dies at night, Executioner becomes Jester |
 
-## 🎭 Roles
+## Roles
 
-### Mafia Team
-The Mafia work together to eliminate the town. They have a private chat at night.
-- **Godfather**: The leader of the Mafia.
-    - *Ability*: **Investigation Immunity**. Appears "Innocent" if investigated by the Cop.
-    - *Action*: Leads the Mafia night kill.
-- **Mafia**: A regular member of the Mafia team.
-    - *Ability*: Participates in the night chat and vote. Becomes the shooter if the Godfather dies.
+### Town
 
-### Town Team
-The Town must deduce who the Mafia are based on discussion and their abilities.
-- **Cop**
-    - *Action*: **Investigate**. Each night, choose a player to learn if they are "Mafia" or "Innocent". (Note: The Godfather tricks the Cop!).
-- **Doctor**
-    - *Action*: **Heal/Save**. Each night, choose a player to protect. If that player is attacked, they survive.
-- **Vigilante**
-    - *Action*: **Shoot**. Each night, can choose to kill a suspect. Be careful not to shoot an innocent townie!
-- **Roleblocker**
-    - *Action*: **Block**. Each night, choose a player to distract. That player's ability (Kill, Save, Investigate) will fail for that night.
-- **Villager**
-    - *Action*: **None**. Must rely on their wit, observation, and persuasion during the day.
+| Role | Night Action | Notes |
+|---|---|---|
+| **Villager** | None | Relies on discussion and voting |
+| **Cop** | Investigate one player → MAFIA or INNOCENT | Godfather reads INNOCENT. Framed targets read MAFIA |
+| **Doctor** | Protect one player from night kills | Can self-target. Prevents both Mafia and Vigilante kills |
+| **Vigilante** | Shoot one player, or hold fire (`nobody`) | Can accidentally kill Town |
+| **Roleblocker** | Block one player's night action | Cannot self-target. Priority 2 |
+| **Tracker** | Track one player → learn who they visited | Only sees successful visits. Blocked/idle targets show "no visit" |
+| **Jailkeeper** | Jail one player: protect + block them | Cannot self-target. Highest block priority (3) |
+| **Mason** | None | Knows other Masons at game start (confirmed Town to each other) |
+| **Bomb** | None (passive) | If killed at night, the killer also dies |
 
-## 🔄 Game Cycle
+### Mafia
 
-The game proceeds in rounds, alternating between **Night** and **Day**.
+All Mafia members share a private night chat to coordinate. Godfather is the default shooter; if Godfather dies, another Mafia member takes over.
 
-### 🌑 Night Phase
-This is when special actions happen in secret.
-1.  **Mafia Chat**: The Mafia team discusses their target privately.
-2.  **Roleblocker Action**: The Roleblocker chooses someone to block.
-3.  **Mafia Kill**: The Mafia chooses a victim. (If the shooter was blocked, the kill fails).
-4.  **Town Actions**:
-    - Cop investigates. (Fails if blocked).
-    - Doctor protects. (Fails if blocked).
-    - Vigilante shoots. (Fails if blocked).
-5.  **Resolution**: The game calculates who died (unless saved) and reveals the deaths to everyone at dawn.
+| Role | Night Action | Notes |
+|---|---|---|
+| **Godfather** | Leads Mafia kill | Investigation immune: reads INNOCENT to Cop |
+| **Mafia** | Participates in kill coordination | Basic Mafia member |
+| **Mafia Roleblocker** | Block one player's night action | Priority 1 (lowest among blockers) |
+| **Framer** | Frame one player | Target reads MAFIA to Cop that night only |
+| **Janitor** | Clean a Mafia kill victim | Victim's role shown as "unknown" publicly |
+| **Forger** | Forge a Mafia kill victim's role | Victim's role shown as the forged role. Takes precedence over Janitor |
 
-### ☀️ Day Phase
-This is when everyone meets to discuss the events.
-1.  **Announcement**: Deaths from the night are revealed.
-2.  **Discussion**:
-    - Players speak in turns.
-    - This is a dynamic conversation: players can choose to **SKIP** their turn if they have nothing to say.
-    - **Skip-Discussion Vote**: At any time during discussion, players can vote to skip the discussion phase and proceed directly to voting. To vote, include `VOTE_SKIP_DISCUSSION` on its own line in your message. To retract your vote, include `UNVOTE_SKIP_DISCUSSION` on its own line. If a strict majority (more than half) of alive players vote to skip, discussion ends immediately and voting begins. The vote command is removed from your public message; any other text you write is still spoken.
-    - Discussion ends when everyone is silent, the "patience limit" (message cap) is reached, or a majority votes to skip discussion.
-3.  **Voting**:
-    - Every player votes to **Eliminate** someone or **Skip** voting.
-    - If a player receives the majority of votes, they are executed and their role is revealed.
-    - If there is a tie or majority 'Skip', no one dies.
+### Neutral
 
-## 🏁 Ending
-The game repeats Night and Day phases until one team meets their win condition.
+| Role | Night Action | Win Condition |
+|---|---|---|
+| **Jester** | None | Get voted out during the day |
+| **Executioner** | None | Get assigned target voted out. Becomes Jester if target dies at night |
+
+## Night Resolution Order
+
+All actions are collected simultaneously, then resolved deterministically:
+
+1. **Blocks & Jails** — Chain resolution with cycle detection. Priority: Jailkeeper (3) > Town Roleblocker (2) > Mafia Roleblocker (1). Mutual blocks = both fail. Jailed players are both blocked and protected.
+2. **Saves** — Blocked doctors don't save.
+3. **Frames** — Blocked framers don't frame.
+4. **Investigations** — Blocked cops don't investigate. Framing and Godfather immunity applied.
+5. **Kills** — Blocked shooters don't kill. Saved targets survive. Mafia cannot kill Mafia-aligned players.
+6. **Deaths computed**
+7. **Bomb retaliation** — If a Bomb dies, the player who killed them also dies.
+8. **Tracker results** — Blocked trackers see nothing. Only successful visits are reported.
+9. **Death reveal overrides** — Forger (fake role) takes precedence over Janitor (hidden role).
+
+## Day Phase
+
+Three sub-phases, all turn-based round-robin:
+
+### 1. Question Round
+Each alive player gets one turn to ask a targeted question to a specific player. Players can `SKIP` if they have nothing to ask.
+
+### 2. Open Discussion
+Round-robin continues. Budget-limited: message count scales with alive players and round progression (configurable via `discussion_open_*` params). Ends when budget is exhausted or all alive players skip consecutively (silence).
+
+### 3. Pre-vote Statements
+Each alive player gets one final turn to state their #1 suspect and reasoning before voting.
+
+### Skip-Discussion Voting
+During any discussion sub-phase, players can include `VOTE_SKIP_DISCUSSION` on its own line to vote for ending discussion early. `UNVOTE_SKIP_DISCUSSION` retracts. If a strict majority votes to skip, discussion ends immediately and voting begins. Vote tokens are stripped from the public message.
+
+## Voting
+
+- All alive players vote concurrently: choose a player to eliminate, or `skip`.
+- **Plurality wins** — player with the most votes is eliminated and their role is revealed.
+- **Tie or majority skip** — no elimination.
+- Jester/Executioner co-wins are checked immediately after a day elimination.
