@@ -131,7 +131,10 @@ ${hasFramer ? '- Framer (can frame one player to appear MAFIA to Cop)' : ''}
 ${hasJanitor ? '- Janitor (can clean one kill to hide role reveal)' : ''}
 ${hasForger ? '- Forger (can forge one kill with a fake role)' : ''}
 
-Output a JSON object with this exact structure:
+Based on your team discussion, submit your final night plan now.`;
+
+  const planSystemConstraints = `Output format:
+- Return a single JSON object with this exact structure:
 {
   "killTarget": "player_name",
   "blockTarget": "player_name" (optional, only if you have a roleblocker),
@@ -140,14 +143,13 @@ Output a JSON object with this exact structure:
   "forgeTarget": "player_name" (optional, only if you have a forger),
   "fakeRole": "villager" (optional, required if forgeTarget is set; must be one of: ${VALID_FORGE_ROLES.join(', ')})
 }
-
-Important:
 - killTarget is REQUIRED and must be a valid kill target.
 - Only include optional fields if your team has that role.
 - If forgeTarget is set, fakeRole is REQUIRED.
-- All targets must be valid non-mafia players (except killTarget can be any non-mafia).`;
+- All targets must be valid non-mafia players (except killTarget can be any non-mafia).
+- Do NOT wrap your answer in any other JSON structure. Return ONLY the plan object.`;
 
-  const rawPlan = await engine.agentIO.respond(leader.config.name, planContext, []);
+  const rawPlan = await engine.agentIO.respondRaw(leader.config.name, planContext, planSystemConstraints);
   const plan = parseLeaderPlan(rawPlan);
 
   if (!plan) {

@@ -229,7 +229,8 @@ Instruction:
         return;
       }
 
-      const isSkip = message.trim().toUpperCase() === 'SKIP';
+      const trimmedMsg = message.trim();
+      const isSkip = trimmedMsg.toUpperCase() === 'SKIP' || trimmedMsg === '...';
 
       if (isSkip) {
         engine.agents[name]?.observePrivateEvent('You chose to SKIP this turn.');
@@ -293,7 +294,8 @@ Guidance:
         return;
       }
 
-      const isSkip = message.trim().toUpperCase() === 'SKIP';
+      const trimmedMsg = message.trim();
+      const isSkip = trimmedMsg.toUpperCase() === 'SKIP' || trimmedMsg === '...';
 
       if (isSkip) {
         consecutiveSkips++;
@@ -358,7 +360,8 @@ Instruction:
         return;
       }
 
-      const isSkip = message.trim().toUpperCase() === 'SKIP';
+      const trimmedMsg = message.trim();
+      const isSkip = trimmedMsg.toUpperCase() === 'SKIP' || trimmedMsg === '...';
       if (isSkip) {
         engine.agents[name]?.observePrivateEvent('You chose to SKIP this turn.');
       } else if (message.trim()) {

@@ -151,6 +151,38 @@ export class AgentIO {
     return pickSafeFallback(options) as T;
   }
 
+  async respondRaw(actor: string, context: string, systemConstraints: string): Promise<string> {
+    const agent = this.agents[actor];
+    if (!agent) return '';
+
+    const attemptMetaBase = { actor, kind: 'response_raw' } as const;
+
+    let lastError: unknown = null;
+    for (let attempt = 1; attempt <= this.cfg.maxAttempts; attempt++) {
+      try {
+        const text = await withAbortableTimeout(
+          (signal) => agent.generateRawResponse(context, systemConstraints, signal),
+          this.cfg.responseTimeoutMs
+        );
+        return text;
+      } catch (err) {
+        lastError = err;
+      }
+
+      logger.log({
+        type: 'SYSTEM',
+        content: `AgentIO: ${actor} respondRaw failed (attempt ${attempt}/${this.cfg.maxAttempts}): ${String((lastError as Error)?.message ?? lastError)}`,
+        metadata: { ...attemptMetaBase, attempt, visibility: 'private' } satisfies GameLogEntry['metadata'],
+      });
+
+      if (attempt < this.cfg.maxAttempts) {
+        await delay(this.cfg.retryBackoffMs * attempt);
+      }
+    }
+
+    return '';
+  }
+
   async reflect(actor: string, context: string): Promise<string> {
     const agent = this.agents[actor];
     if (!agent) return 'No reflections.';

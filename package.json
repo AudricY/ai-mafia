@@ -25,8 +25,8 @@
     "url": "git+https://github.com/audricyap/ai-mafia.git"
   },
   "dependencies": {
-    "@ai-sdk/openai": "^2.0.86",
-    "ai": "^5.0.113",
+    "@ai-sdk/openai": "^2.0.92",
+    "ai": "^5.0.137",
     "chalk": "^5.6.2",
     "dotenv": "^17.2.3",
     "ink": "^6.5.1",

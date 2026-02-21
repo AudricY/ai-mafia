@@ -58,10 +58,13 @@ export class Agent {
   private readonly notebookMaxChars = 12000;
   private readonly noteMaxChars = 300;
 
-  // Token limits per call type
-  private readonly maxTokensResponse = 512;
-  private readonly maxTokensDecision = 256;
-  private readonly maxTokensReflection = 512;
+  // Token limits per call type.
+  // Generous budgets because thinking/reasoning models (kimi-k2.5, glm-5) consume
+  // tokens on chain-of-thought before producing the actual JSON answer, and for
+  // some providers maxOutputTokens includes reasoning tokens.
+  private readonly maxTokensResponse = 8192;
+  private readonly maxTokensDecision = 4096;
+  private readonly maxTokensReflection = 1024;
 
   private didLogModelInit = false;
   private cachedModelId?: string;
@@ -309,6 +312,61 @@ ${systemConstraints ? `\n${systemConstraints.trim()}\n` : ''}
     }
   }
 
+  /**
+   * Try to find the LAST valid JSON object in text.
+   * Reasoning/thinking models (e.g. kimi-k2.5, glm-5) often dump chain-of-thought
+   * before their actual JSON answer. The standard tryParseJsonObject grabs from
+   * the FIRST '{' to the LAST '}', which captures the entire CoT as invalid JSON.
+   * This method scans backwards to find the last complete {...} block.
+   */
+  private tryParseLastJsonObject(text: string): unknown | null {
+    const trimmed = text.trim();
+    // Scan backwards for the last '}' and find its matching '{'
+    let depth = 0;
+    let end = -1;
+    let start = -1;
+    for (let i = trimmed.length - 1; i >= 0; i--) {
+      const ch = trimmed[i];
+      if (ch === '}') {
+        if (end === -1) end = i;
+        depth++;
+      } else if (ch === '{') {
+        depth--;
+        if (depth === 0) {
+          start = i;
+          break;
+        }
+      }
+    }
+    if (start >= 0 && end > start) {
+      const candidate = trimmed.slice(start, end + 1);
+      try {
+        return JSON.parse(candidate);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Extract concatenated text from result.reasoning array.
+   * Used as a fallback source when result.text is empty (e.g. GLM-5 puts
+   * everything in reasoning tokens and produces no content).
+   */
+  private extractReasoningText(reasoning: unknown): string {
+    if (!Array.isArray(reasoning)) return '';
+    return reasoning
+      .map((r: unknown) => {
+        if (r && typeof r === 'object' && 'text' in r && typeof (r as { text: unknown }).text === 'string') {
+          return (r as { text: string }).text;
+        }
+        return '';
+      })
+      .join(' ')
+      .trim();
+  }
+
   async generateResponse(
     systemContext: string,
     _history: CoreMessage[],
@@ -400,6 +458,13 @@ Output format:
       }
       const rawText = result.text;
 
+      // Handle known non-JSON keywords before attempting JSON parsing.
+      // Discussion prompts tell models to reply "SKIP" when nothing to add,
+      // but generateResponse expects JSON. Some models (glm-5) follow the
+      // SKIP instruction literally instead of wrapping it in JSON.
+      const rawTrimmedUpper = rawText.trim().toUpperCase();
+      if (rawTrimmedUpper === 'SKIP') return 'SKIP';
+
       const parsed = this.tryParseJsonObject(rawText);
       if (parsed && typeof parsed === 'object' && parsed !== null) {
         const obj = parsed as { public?: unknown; note?: unknown };
@@ -422,6 +487,11 @@ Output format:
         }
 
         if (pub) return pub;
+
+        // Model returned valid JSON with an empty public field (e.g. {"public": "", "note": "..."}).
+        // The note was already processed above. Return graceful silence instead of
+        // falling through to "unparseable" error logging.
+        if (typeof obj.public === 'string') return '...';
       }
 
       // JSON parsing failed — try to salvage a "public" value from truncated JSON
@@ -439,6 +509,60 @@ Output format:
           return salvaged;
         }
       }
+
+      // Reasoning model fallback: chain-of-thought models (kimi-k2.5, glm-5) may
+      // embed the JSON answer after their reasoning, or put everything in reasoning
+      // tokens leaving result.text empty.
+      const textForFallback = rawText || this.extractReasoningText(result.reasoning);
+      if (textForFallback) {
+        // Try finding the LAST JSON object (CoT models put reasoning first, answer last)
+        const lastJson = this.tryParseLastJsonObject(textForFallback);
+        if (lastJson && typeof lastJson === 'object' && lastJson !== null) {
+          const obj = lastJson as { public?: unknown; note?: unknown };
+          const pub = typeof obj.public === 'string' ? obj.public.trim() : null;
+          const note = typeof obj.note === 'string' ? obj.note.trim() : null;
+          if (note) {
+            const normalizedNote = note.replace(/\n/g, ' ').trim().slice(0, this.noteMaxChars);
+            if (normalizedNote) {
+              this.appendToNotebook(normalizedNote);
+              logger.log({
+                type: 'THOUGHT',
+                player: this.config.name,
+                content: `NOTE: ${normalizedNote}`,
+                metadata: { visibility: 'private', kind: 'note' },
+              });
+            }
+          }
+          if (pub) {
+            logger.log({
+              type: 'SYSTEM',
+              content: `${this.config.name}: extracted response from reasoning model output`,
+              metadata: { visibility: 'private' },
+            });
+            return pub;
+          }
+        }
+
+        // Try regex salvage on the fallback text too (e.g. truncated JSON in reasoning)
+        const fallbackPubMatch = textForFallback.match(pubRegex);
+        if (fallbackPubMatch?.[1]) {
+          const salvaged = fallbackPubMatch[1].replace(/\\"/g, '"').replace(/\\n/g, ' ').trim();
+          if (salvaged) {
+            logger.log({
+              type: 'SYSTEM',
+              content: `${this.config.name}: salvaged response from reasoning model output`,
+              metadata: { visibility: 'private' },
+            });
+            return salvaged;
+          }
+        }
+      }
+
+      // Check if the tail of the raw text is a known keyword (thinking models
+      // may dump CoT then write "SKIP" at the end without JSON wrapping).
+      const tailText = (textForFallback || rawText).trim();
+      const tailUpper = tailText.slice(-20).trim().toUpperCase();
+      if (tailUpper === 'SKIP') return 'SKIP';
 
       // Last resort: never dump raw chain-of-thought into public chat.
       // Log the raw output privately for debugging, return safe silence.
@@ -512,41 +636,64 @@ Output format:
         abortSignal: signal,
       });
 
-      const parsed = this.tryParseJsonObject(result.text);
-      if (parsed && typeof parsed === 'object' && parsed !== null) {
-        const obj = parsed as { choice?: unknown; rationale?: unknown };
-        const choice = typeof obj.choice === 'string' ? obj.choice.trim() : '';
-        const rationale = typeof obj.rationale === 'string' ? obj.rationale.trim() : '';
-        const matched = this.matchOption(choice, options) ?? options[0];
-
-        // Log rationale as private THOUGHT when logThoughts is enabled
-        if (this.logThoughts && rationale) {
-          const contextPreview = context.length > 100 ? context.substring(0, 100) + '...' : context;
-          logger.log({
-            type: 'THOUGHT',
-            player: this.config.name,
-            content: rationale,
-            metadata: {
-              visibility: 'private',
-              kind: 'decision_rationale',
-              choice: matched,
-              context: contextPreview,
-            },
-          });
-        }
-
-        // Optionally append decision rationale as a note (but don't force it)
-        // The main notebook updates come from response notes
-        return matched;
+      // Try parsing JSON from result.text, then fall back to last-JSON extraction
+      // and reasoning text for thinking models (kimi-k2.5, glm-5).
+      const textSources = [result.text];
+      const reasoningFallback = this.extractReasoningText(result.reasoning);
+      if (reasoningFallback && !result.text.trim()) {
+        textSources.push(reasoningFallback);
       }
 
-      const raw = result.text.trim();
-      const matched = this.matchOption(raw, options);
+      for (const source of textSources) {
+        // Try standard first-to-last bracket JSON extraction
+        const parsed = this.tryParseJsonObject(source);
+        const obj = (parsed && typeof parsed === 'object' && parsed !== null)
+          ? parsed as { choice?: unknown; rationale?: unknown }
+          : null;
+
+        // If that fails, try finding the last JSON object (for CoT-then-answer models)
+        const lastParsed = obj ? null : this.tryParseLastJsonObject(source);
+        const lastObj = (lastParsed && typeof lastParsed === 'object' && lastParsed !== null)
+          ? lastParsed as { choice?: unknown; rationale?: unknown }
+          : null;
+
+        const finalObj = obj ?? lastObj;
+        if (finalObj) {
+          const choice = typeof finalObj.choice === 'string' ? finalObj.choice.trim() : '';
+          const rationale = typeof finalObj.rationale === 'string' ? finalObj.rationale.trim() : '';
+          const matched = this.matchOption(choice, options) ?? options[0];
+
+          if (this.logThoughts && rationale) {
+            const contextPreview = context.length > 100 ? context.substring(0, 100) + '...' : context;
+            logger.log({
+              type: 'THOUGHT',
+              player: this.config.name,
+              content: rationale,
+              metadata: {
+                visibility: 'private',
+                kind: 'decision_rationale',
+                choice: matched,
+                context: contextPreview,
+              },
+            });
+          }
+
+          return matched;
+        }
+      }
+
+      // No JSON found — fall back to substring matching.
+      // For reasoning models that dump CoT into text, prefer matching against
+      // only the tail (last 200 chars) to avoid picking up names mentioned early
+      // in the reasoning rather than the final answer.
+      const raw = result.text.trim() || reasoningFallback;
+      const tail = raw.length > 200 ? raw.slice(-200) : raw;
+      const matched = this.matchOption(tail, options) ?? this.matchOption(raw, options);
       if (this.logThoughts) {
         logger.log({
           type: 'THOUGHT',
           player: this.config.name,
-          content: `Decision output (unparsed): ${raw}`,
+          content: `Decision output (unparsed): ${raw.slice(0, 300)}`,
         });
       }
       return matched ?? options[0];
@@ -557,6 +704,62 @@ Output format:
         metadata: { error }
       });
       return options[0];
+    }
+  }
+
+  async generateRawResponse(
+    context: string,
+    systemConstraints: string,
+    signal?: AbortSignal
+  ): Promise<string> {
+    try {
+      this.ensureMemoryBudget();
+
+      if (isDryRun()) {
+        // Return empty string in dry-run — callers handle fallback.
+        return '';
+      }
+
+      const model = this.getModel();
+      const systemPrompt = this.buildSystemPrompt(systemConstraints);
+
+      const messages: CoreMessage[] = this.buildMemoryUserMessage(context);
+
+      const result = await generateText({
+        model,
+        system: systemPrompt,
+        messages,
+        temperature: this.config.temperature,
+        maxOutputTokens: this.maxTokensResponse,
+        abortSignal: signal,
+      });
+
+      // Log reasoning for debugging (same as generateResponse)
+      if (result.reasoning?.length && this.logThoughts) {
+        const reasoningText = result.reasoning
+          .map(r => 'text' in r ? r.text : '')
+          .join(' ')
+          .slice(0, 500);
+        if (reasoningText) {
+          logger.log({
+            type: 'THOUGHT',
+            player: this.config.name,
+            content: `REASONING: ${reasoningText}`,
+            metadata: { visibility: 'private', kind: 'reasoning' },
+          });
+        }
+      }
+
+      // Return raw text, falling back to reasoning text for thinking models
+      const rawText = result.text.trim() || this.extractReasoningText(result.reasoning);
+      return rawText;
+    } catch (error) {
+      logger.log({
+        type: 'SYSTEM',
+        content: `Error generating raw response for ${this.config.name}: ${(error as Error).message}`,
+        metadata: { error },
+      });
+      return '';
     }
   }
 

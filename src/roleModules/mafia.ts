@@ -99,7 +99,8 @@ Important:
 Alive players: ${aliveNames.join(', ')}.`;
 
       const message = await engine.agentIO.respond(member.config.name, context, []);
-      const isSkip = message.trim().toUpperCase() === 'SKIP';
+      const trimmed = message.trim();
+      const isSkip = trimmed.toUpperCase() === 'SKIP' || trimmed === '...';
 
       if (isSkip) {
         engine.agents[member.config.name]?.observePrivateEvent(
