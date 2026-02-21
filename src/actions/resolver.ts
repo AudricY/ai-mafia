@@ -9,17 +9,7 @@ import type {
   ResolvedTracker,
   DeathRevealOverride,
 } from './types.js';
-
-function isMafiaRole(role: Role | undefined): boolean {
-  return (
-    role === 'mafia' ||
-    role === 'godfather' ||
-    role === 'mafia_roleblocker' ||
-    role === 'framer' ||
-    role === 'janitor' ||
-    role === 'forger'
-  );
-}
+import { isMafiaRole } from '../utils.js';
 
 function resolveInvestigationResult(
   targetRole: Role | undefined,

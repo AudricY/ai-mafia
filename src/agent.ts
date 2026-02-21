@@ -2,28 +2,7 @@ import { generateText, CoreMessage, gateway } from 'ai';
 import { PlayerConfig, Role, LogType, GameLogEntry } from './types.js';
 import { logger } from './logger.js';
 import { buildPublicLedger, formatPublicLedger } from './publicLedger.js';
-
-function isDryRun(): boolean {
-  const v = (process.env.AI_MAFIA_DRY_RUN ?? process.env.DRY_RUN ?? '').toLowerCase().trim();
-  return v === '1' || v === 'true' || v === 'yes' || v === 'on';
-}
-
-function dryRunSeed(): number {
-  const raw = process.env.AI_MAFIA_DRY_RUN_SEED;
-  if (!raw) return 1;
-  const n = Number(raw);
-  return Number.isFinite(n) ? n : 1;
-}
-
-function fnv1a32(input: string): number {
-  // FNV-1a 32-bit hash, deterministic across runs.
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < input.length; i++) {
-    hash ^= input.charCodeAt(i);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return hash >>> 0;
-}
+import { isDryRun, dryRunSeed, fnv1a32 } from './utils.js';
 
 function pickDeterministicOption(options: string[], key: string): string {
   if (options.length === 0) return '';
@@ -78,6 +57,11 @@ export class Agent {
   // Constants for notebook management
   private readonly notebookMaxChars = 12000;
   private readonly noteMaxChars = 300;
+
+  // Token limits per call type
+  private readonly maxTokensResponse = 512;
+  private readonly maxTokensDecision = 256;
+  private readonly maxTokensReflection = 512;
 
   private didLogModelInit = false;
   private cachedModelId?: string;
@@ -327,7 +311,8 @@ ${systemConstraints ? `\n${systemConstraints.trim()}\n` : ''}
 
   async generateResponse(
     systemContext: string,
-    _history: CoreMessage[]
+    _history: CoreMessage[],
+    signal?: AbortSignal
   ): Promise<string> {
     try {
       this.ensureMemoryBudget();
@@ -393,6 +378,8 @@ Output format:
         system: systemPrompt,
         messages,
         temperature: this.config.temperature,
+        maxOutputTokens: this.maxTokensResponse,
+        abortSignal: signal,
       });
 
       const parsed = this.tryParseJsonObject(result.text);
@@ -401,10 +388,10 @@ Output format:
         const pub = typeof obj.public === 'string' ? obj.public.trim() : null;
         const note = typeof obj.note === 'string' ? obj.note.trim() : null;
 
-        // Process note: enforce one-line, max length, then append to notebook
+        // Process note: enforce one-line, truncate to max length, then append to notebook
         if (note) {
-          const normalizedNote = note.replace(/\n/g, ' ').trim();
-          if (normalizedNote && normalizedNote.length <= this.noteMaxChars) {
+          const normalizedNote = note.replace(/\n/g, ' ').trim().slice(0, this.noteMaxChars);
+          if (normalizedNote) {
             this.appendToNotebook(normalizedNote);
             // Emit as THOUGHT entry for UI consumption
             logger.log({
@@ -435,7 +422,8 @@ Output format:
     context: string,
     options: string[],
     _history: CoreMessage[] = [],
-    systemAddendum?: string
+    systemAddendum?: string,
+    signal?: AbortSignal
   ): Promise<string> {
     try {
       this.ensureMemoryBudget();
@@ -480,6 +468,8 @@ Output format:
         system: systemPrompt,
         messages,
         temperature: this.config.temperature,
+        maxOutputTokens: this.maxTokensDecision,
+        abortSignal: signal,
       });
 
       const parsed = this.tryParseJsonObject(result.text);
@@ -530,7 +520,7 @@ Output format:
     }
   }
 
-  async generateReflection(systemContext: string): Promise<string> {
+  async generateReflection(systemContext: string, signal?: AbortSignal): Promise<string> {
     try {
       this.ensureMemoryBudget();
 
@@ -565,6 +555,8 @@ Output format:
         system: systemPrompt,
         messages,
         temperature: this.config.temperature,
+        maxOutputTokens: this.maxTokensReflection,
+        abortSignal: signal,
       });
 
       return result.text.trim() || 'No reflections.';
@@ -586,8 +578,15 @@ Output format:
     if (exact) return exact;
 
     // Fallback: substring match (e.g. "I vote for Alice" -> "Alice").
-    const substring = options.find(o => normalized.includes(o.toLowerCase()));
-    return substring;
+    // Sort by length descending to prefer the longest (most-specific) match,
+    // avoiding nondeterminism when options are substrings of each other and
+    // the array order is shuffled.
+    const matches = options.filter(o => normalized.includes(o.toLowerCase()));
+    if (matches.length > 0) {
+      matches.sort((a, b) => b.length - a.length);
+      return matches[0];
+    }
+    return undefined;
   }
 
   private normalizeModelId(modelId: string): string {

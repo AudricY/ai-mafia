@@ -3,13 +3,10 @@ import { Box, Text, useApp, useInput, useStdout } from 'ink';
 import { logger } from '../logger.js';
 import type { GameLogEntry, Role } from '../types.js';
 import { buildPublicLedger, formatPublicLedger } from '../publicLedger.js';
+import { isMafiaRole } from '../utils.js';
 
 type PovMode = 'ALL' | 'PUBLIC' | { player: string };
 type ViewMode = 'LOG' | 'NOTEBOOKS' | 'LEDGER';
-
-function isMafiaRole(role: Role | undefined): boolean {
-  return role === 'mafia' || role === 'godfather';
-}
 
 function formatTime(iso: string): string {
   const t = iso.split('T')[1];

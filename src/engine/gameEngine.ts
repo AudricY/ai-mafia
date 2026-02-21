@@ -13,6 +13,7 @@ import { NightPhase } from '../phases/nightPhase.ts';
 import { DayDiscussionPhase } from '../phases/dayDiscussionPhase.ts';
 import { DayVotingPhase } from '../phases/dayVotingPhase.ts';
 import { PostGameReflectionsPhase } from '../phases/postGameReflectionsPhase.ts';
+import { isDryRun, isMafiaRole } from '../utils.js';
 
 function mulberry32(seed: number): () => number {
   let t = seed >>> 0;
@@ -60,10 +61,7 @@ export class GameEngine {
     this.mafiaMemory = config.enable_faction_memory ? createFactionMemory('mafia') : undefined;
     const players: Record<string, PlayerState> = {};
 
-    const isDryRun = (() => {
-      const v = (process.env.AI_MAFIA_DRY_RUN ?? process.env.DRY_RUN ?? '').toLowerCase().trim();
-      return v === '1' || v === 'true' || v === 'yes' || v === 'on';
-    })();
+    const dryRun = isDryRun();
 
     // Pass known players to logger for highlighting
     logger.setKnownPlayers(config.players.map(p => p.name));
@@ -110,8 +108,8 @@ export class GameEngine {
     // RNG for Night 1 bias-mitigation "assigned random target" prompts.
     // In dry-run, keep deterministic. Otherwise, default to a time-based seed so runs vary.
     const night1Seed =
-      (isDryRun && process.env.AI_MAFIA_DRY_RUN_SEED ? Number(process.env.AI_MAFIA_DRY_RUN_SEED) : undefined) ??
-      (isDryRun && this.config.role_seed !== undefined ? this.config.role_seed + 4242 : undefined) ??
+      (dryRun && process.env.AI_MAFIA_DRY_RUN_SEED ? Number(process.env.AI_MAFIA_DRY_RUN_SEED) : undefined) ??
+      (dryRun && this.config.role_seed !== undefined ? this.config.role_seed + 4242 : undefined) ??
       Date.now();
     this.night1Rng = mulberry32(Number.isFinite(night1Seed) ? night1Seed : Date.now());
 
@@ -253,15 +251,7 @@ export class GameEngine {
 
   checkWin(): boolean {
     const alive = this.getAlivePlayers();
-    const mafiaCount = alive.filter(
-      p =>
-        p.role === 'mafia' ||
-        p.role === 'godfather' ||
-        p.role === 'mafia_roleblocker' ||
-        p.role === 'framer' ||
-        p.role === 'janitor' ||
-        p.role === 'forger'
-    ).length;
+    const mafiaCount = alive.filter(p => isMafiaRole(p.role)).length;
     const villagerCount = alive.length - mafiaCount;
 
     if (mafiaCount === 0) {
@@ -494,14 +484,7 @@ export class GameEngine {
     // Log roles (system only) + initialize agent-private knowledge.
     Object.values(this.state.players).forEach(p => {
       this.agents[p.config.name]?.setRole(p.role);
-      const isMafiaRole =
-        p.role === 'mafia' ||
-        p.role === 'godfather' ||
-        p.role === 'mafia_roleblocker' ||
-        p.role === 'framer' ||
-        p.role === 'janitor' ||
-        p.role === 'forger';
-      this.agents[p.config.name]?.setFactionMemory(isMafiaRole ? this.mafiaMemory : undefined);
+      this.agents[p.config.name]?.setFactionMemory(isMafiaRole(p.role) ? this.mafiaMemory : undefined);
       logger.setPlayerRole(p.config.name, p.role);
       logger.log({
         type: 'SYSTEM',
@@ -536,12 +519,7 @@ export class GameEngine {
       const validTargets = Object.values(this.state.players).filter(
         p =>
           p.isAlive &&
-          p.role !== 'mafia' &&
-          p.role !== 'godfather' &&
-          p.role !== 'mafia_roleblocker' &&
-          p.role !== 'framer' &&
-          p.role !== 'janitor' &&
-          p.role !== 'forger' &&
+          !isMafiaRole(p.role) &&
           p.role !== 'executioner' &&
           p.role !== 'jester'
       );

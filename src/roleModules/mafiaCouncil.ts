@@ -4,6 +4,7 @@ import type { NightActionIntent } from '../actions/types.js';
 import type { Role } from '../types.js';
 import { logger } from '../logger.js';
 import { runMafiaDiscussion } from './mafia.ts';
+import { isMafiaRole } from '../utils.js';
 
 // Valid roles for forging (all non-mafia roles)
 const VALID_FORGE_ROLES: Role[] = [
@@ -40,17 +41,6 @@ const MafiaNightPlanSchema = z.object({
 
 type MafiaNightPlan = z.infer<typeof MafiaNightPlanSchema>;
 
-function isMafiaRole(role: Role): boolean {
-  return (
-    role === 'mafia' ||
-    role === 'godfather' ||
-    role === 'mafia_roleblocker' ||
-    role === 'framer' ||
-    role === 'janitor' ||
-    role === 'forger'
-  );
-}
-
 function getMafiaTeam(engine: GameEngine) {
   const alivePlayers = engine.getAlivePlayers();
   return alivePlayers.filter(p => isMafiaRole(p.role));
@@ -77,7 +67,7 @@ function getValidNonMafiaTargets(engine: GameEngine): string[] {
   const aliveNames = engine.getAlivePlayers().map(p => p.config.name);
   return aliveNames.filter(n => {
     const role = engine.state.players[n]?.role;
-    return role !== 'mafia' && role !== 'godfather' && role !== 'mafia_roleblocker';
+    return !isMafiaRole(role);
   });
 }
 

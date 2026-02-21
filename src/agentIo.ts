@@ -3,16 +3,17 @@ import { randomInt } from 'node:crypto';
 import { logger } from './logger.js';
 import type { Agent } from './agent.js';
 import type { GameLogEntry } from './types.js';
+import { isDryRun } from './utils.js';
 
 export interface AgentIOConfig {
   responseTimeoutMs: number;
   decisionTimeoutMs: number;
   maxAttempts: number;
+  retryBackoffMs: number;
 }
 
-function isDryRun(): boolean {
-  const v = (process.env.AI_MAFIA_DRY_RUN ?? process.env.DRY_RUN ?? '').toLowerCase().trim();
-  return v === '1' || v === 'true' || v === 'yes' || v === 'on';
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 function shuffleInPlace<T>(arr: T[]): void {
@@ -25,13 +26,21 @@ function shuffleInPlace<T>(arr: T[]): void {
   }
 }
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+function withAbortableTimeout<T>(
+  fn: (signal: AbortSignal) => Promise<T>,
+  timeoutMs: number
+): Promise<T> {
+  const controller = new AbortController();
+  const promise = fn(controller.signal);
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return promise;
   let t: NodeJS.Timeout | undefined;
   return Promise.race([
     promise,
     new Promise<T>((_, reject) => {
-      t = setTimeout(() => reject(new Error(`Timeout after ${timeoutMs}ms`)), timeoutMs);
+      t = setTimeout(() => {
+        controller.abort();
+        reject(new Error(`Timeout after ${timeoutMs}ms`));
+      }, timeoutMs);
     }),
   ]).finally(() => {
     if (t) clearTimeout(t);
@@ -56,6 +65,7 @@ export class AgentIO {
       responseTimeoutMs: cfg?.responseTimeoutMs ?? 90_000,
       decisionTimeoutMs: cfg?.decisionTimeoutMs ?? 60_000,
       maxAttempts: cfg?.maxAttempts ?? 2,
+      retryBackoffMs: cfg?.retryBackoffMs ?? 1500,
     };
   }
 
@@ -68,7 +78,10 @@ export class AgentIO {
     let lastError: unknown = null;
     for (let attempt = 1; attempt <= this.cfg.maxAttempts; attempt++) {
       try {
-        const text = await withTimeout(agent.generateResponse(context, history), this.cfg.responseTimeoutMs);
+        const text = await withAbortableTimeout(
+          (signal) => agent.generateResponse(context, history, signal),
+          this.cfg.responseTimeoutMs
+        );
         const trimmed = text.trim();
         if (trimmed) return trimmed;
         lastError = new Error('Empty response');
@@ -81,6 +94,10 @@ export class AgentIO {
         content: `AgentIO: ${actor} response failed (attempt ${attempt}/${this.cfg.maxAttempts}): ${String((lastError as Error)?.message ?? lastError)}`,
         metadata: { ...attemptMetaBase, attempt, visibility: 'private' } satisfies GameLogEntry['metadata'],
       });
+
+      if (attempt < this.cfg.maxAttempts) {
+        await delay(this.cfg.retryBackoffMs * attempt);
+      }
     }
 
     // Safe public fallback in discussion phases is SKIP.
@@ -107,8 +124,8 @@ export class AgentIO {
     let lastError: unknown = null;
     for (let attempt = 1; attempt <= this.cfg.maxAttempts; attempt++) {
       try {
-        const choice = await withTimeout(
-          agent.generateDecision(context, optionsArray, history, systemAddendum),
+        const choice = await withAbortableTimeout(
+          (signal) => agent.generateDecision(context, optionsArray, history, systemAddendum, signal),
           this.cfg.decisionTimeoutMs
         );
         const matched =
@@ -125,6 +142,10 @@ export class AgentIO {
         content: `AgentIO: ${actor} decision failed (attempt ${attempt}/${this.cfg.maxAttempts}): ${String((lastError as Error)?.message ?? lastError)}`,
         metadata: { ...attemptMetaBase, attempt, visibility: 'private' } satisfies GameLogEntry['metadata'],
       });
+
+      if (attempt < this.cfg.maxAttempts) {
+        await delay(this.cfg.retryBackoffMs * attempt);
+      }
     }
 
     return pickSafeFallback(options) as T;
@@ -139,7 +160,10 @@ export class AgentIO {
     let lastError: unknown = null;
     for (let attempt = 1; attempt <= this.cfg.maxAttempts; attempt++) {
       try {
-        const text = await withTimeout(agent.generateReflection(context), this.cfg.responseTimeoutMs);
+        const text = await withAbortableTimeout(
+          (signal) => agent.generateReflection(context, signal),
+          this.cfg.responseTimeoutMs
+        );
         const trimmed = text.trim();
         if (trimmed) return trimmed;
         lastError = new Error('Empty response');
@@ -152,6 +176,10 @@ export class AgentIO {
         content: `AgentIO: ${actor} reflection failed (attempt ${attempt}/${this.cfg.maxAttempts}): ${String((lastError as Error)?.message ?? lastError)}`,
         metadata: { ...attemptMetaBase, attempt, visibility: 'private' } satisfies GameLogEntry['metadata'],
       });
+
+      if (attempt < this.cfg.maxAttempts) {
+        await delay(this.cfg.retryBackoffMs * attempt);
+      }
     }
 
     return 'No reflections.';
