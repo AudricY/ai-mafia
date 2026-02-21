@@ -382,7 +382,25 @@ Output format:
         abortSignal: signal,
       });
 
-      const parsed = this.tryParseJsonObject(result.text);
+      // Some "thinking" models (e.g. kimi-k2.5) embed reasoning in result.text.
+      // If the SDK separated reasoning into result.reasoning, log it privately.
+      if (result.reasoning?.length && this.logThoughts) {
+        const reasoningText = result.reasoning
+          .map(r => 'text' in r ? r.text : '')
+          .join(' ')
+          .slice(0, 500);
+        if (reasoningText) {
+          logger.log({
+            type: 'THOUGHT',
+            player: this.config.name,
+            content: `REASONING: ${reasoningText}`,
+            metadata: { visibility: 'private', kind: 'reasoning' },
+          });
+        }
+      }
+      const rawText = result.text;
+
+      const parsed = this.tryParseJsonObject(rawText);
       if (parsed && typeof parsed === 'object' && parsed !== null) {
         const obj = parsed as { public?: unknown; note?: unknown };
         const pub = typeof obj.public === 'string' ? obj.public.trim() : null;
@@ -406,8 +424,30 @@ Output format:
         if (pub) return pub;
       }
 
-      // Fallback: treat the model output as the public message.
-      return result.text;
+      // JSON parsing failed — try to salvage a "public" value from truncated JSON
+      // (e.g. model output: `{"public": "some message...` cut off by maxTokens)
+      const pubRegex = /"public"\s*:\s*"((?:[^"\\]|\\.)*)(?:"|$)/;
+      const pubMatch = rawText.match(pubRegex);
+      if (pubMatch?.[1]) {
+        const salvaged = pubMatch[1].replace(/\\"/g, '"').replace(/\\n/g, ' ').trim();
+        if (salvaged) {
+          logger.log({
+            type: 'SYSTEM',
+            content: `${this.config.name}: salvaged truncated JSON response`,
+            metadata: { visibility: 'private' },
+          });
+          return salvaged;
+        }
+      }
+
+      // Last resort: never dump raw chain-of-thought into public chat.
+      // Log the raw output privately for debugging, return safe silence.
+      logger.log({
+        type: 'SYSTEM',
+        content: `${this.config.name}: unparseable response, returning silence. Raw (truncated): ${rawText.slice(0, 200)}`,
+        metadata: { visibility: 'private' },
+      });
+      return '...';
     } catch (error) {
       logger.log({
         type: 'SYSTEM',
