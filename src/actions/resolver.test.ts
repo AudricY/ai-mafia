@@ -428,3 +428,4 @@ test('resolveNightActions: blocked cop does not investigate', () => {
   assert.ok(isBlocked('Cop'));
   assert.equal(investigations.length, 0);
 });
+
