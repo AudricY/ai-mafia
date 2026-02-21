@@ -24,9 +24,18 @@ export class DayVotingPhase {
     );
 
     // Apply and log votes in a stable order (by player name) for deterministic logs.
+    const aliveSet = new Set(aliveNames);
     voteResults
       .sort((a, b) => a.playerName.localeCompare(b.playerName))
       .forEach(({ playerName, vote }) => {
+        if (vote !== 'skip' && !aliveSet.has(vote)) {
+          engine.recordPublic({
+            type: 'SYSTEM',
+            content: `${playerName} voted for invalid target "${vote}" — vote discarded.`,
+          });
+          return;
+        }
+
         engine.recordPublic({
           type: 'VOTE',
           player: playerName,

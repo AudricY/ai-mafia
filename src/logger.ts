@@ -44,6 +44,7 @@ export class GameLogger {
   private persistenceEnabled = true;
   private subscribers: Set<(entry: GameLogEntry) => void> = new Set();
   private playerRoles: Map<string, Role> = new Map();
+  private unsubscribeEventBus?: () => void;
 
   constructor() {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -55,7 +56,7 @@ export class GameLogger {
     this.transcriptFile = path.join(logDir, `transcript-${timestamp}.txt`);
 
     // The logger subscribes to the global event bus and persists/prints entries.
-    eventBus.subscribe((entry) => {
+    this.unsubscribeEventBus = eventBus.subscribe((entry) => {
       this.handleEntry(entry);
     });
   }
@@ -206,10 +207,19 @@ export class GameLogger {
     console.log(`${prefix} ${typeStr}${playerInfo}: ${content}`);
   }
 
+  destroy() {
+    this.unsubscribeEventBus?.();
+  }
+
   private flush() {
     if (!this.persistenceEnabled) return;
-    fs.writeFileSync(this.logFile, JSON.stringify(this.logs, null, 2));
-    fs.writeFileSync(this.transcriptFile, this.buildTranscriptText(this.logs));
+    try {
+      fs.writeFileSync(this.logFile, JSON.stringify(this.logs, null, 2));
+      fs.writeFileSync(this.transcriptFile, this.buildTranscriptText(this.logs));
+    } catch (err) {
+      this.persistenceEnabled = false;
+      console.error(`[Logger] Write failed, disabling persistence: ${err instanceof Error ? err.message : err}`);
+    }
   }
 
   private buildTranscriptText(entries: readonly GameLogEntry[]): string {

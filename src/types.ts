@@ -26,8 +26,8 @@ export type Role = z.infer<typeof RoleSchema>;
 export const PlayerConfigSchema = z.object({
   name: z.string(),
   // AI Gateway model id in `provider/model` format, e.g. `openai/gpt-4o`.
-  model: z.string().default('xai/grok-4.1-fast-reasoning'),
-  temperature: z.number().default(0.7),
+  model: z.string().regex(/^[\w.-]+\/[\w.-]+$/, 'Model must be "provider/model" format').default('xai/grok-4.1-fast-reasoning'),
+  temperature: z.number().min(0).max(2).default(0.7),
   systemPrompt: z.string().optional(),
 });
 export type PlayerConfig = z.infer<typeof PlayerConfigSchema>;
@@ -35,7 +35,7 @@ export type PlayerConfig = z.infer<typeof PlayerConfigSchema>;
 export const GameConfigSchema = z.object({
   rounds: z.number().default(3),
   system_prompt: z.string().default('You are playing a game of Mafia.'),
-  players: z.array(PlayerConfigSchema),
+  players: z.array(PlayerConfigSchema).min(2, 'Game requires at least 2 players'),
   roles: z.record(z.string(), RoleSchema).optional(), // Map player name to role (optional, for forced assignment)
   // If roles are not explicitly assigned, the game can select roles from a pool.
   // The selected role setup (including counts) is intended to be public knowledge, while assignments remain hidden.
@@ -69,7 +69,19 @@ export const GameConfigSchema = z.object({
   // 'pool' (possible roles from role_pool/role_counts, no counts), or 'all' (all roles, no counts).
   role_setup_visibility: z.enum(['exact', 'pool', 'all']).default('exact'),
   // If roles are not explicitly assigned, the game engine will randomize them based on player count
-});
+})
+.refine(
+  (c) => {
+    if (!c.roles) return true;
+    const names = new Set(c.players.map(p => p.name));
+    return Object.keys(c.roles).every(n => names.has(n));
+  },
+  { message: 'All keys in "roles" must match a player name' }
+)
+.refine(
+  (c) => c.discussion_open_floor <= c.discussion_open_cap,
+  { message: 'discussion_open_floor must be <= discussion_open_cap' }
+);
 export type GameConfig = z.infer<typeof GameConfigSchema>;
 
 // --- Game State Types ---
