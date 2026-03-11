@@ -1,7 +1,7 @@
 import type { ModelMessage as CoreMessage } from 'ai';
 import { randomInt } from 'node:crypto';
 import { logger } from './logger.js';
-import type { Agent } from './agent.js';
+import type { ResponseScope } from './agent.js';
 import type { GameLogEntry } from './types.js';
 import { isDryRun } from './utils.js';
 
@@ -52,12 +52,34 @@ function pickSafeFallback(options: readonly string[]): string {
   return lowered.get('skip') ?? lowered.get('nobody') ?? options[0] ?? '';
 }
 
+export interface AgentLike {
+  generateResponse(
+    context: string,
+    history: CoreMessage[],
+    scope: ResponseScope,
+    signal?: AbortSignal
+  ): Promise<string>;
+  generateDecision(
+    context: string,
+    options: string[],
+    history?: CoreMessage[],
+    systemAddendum?: string,
+    signal?: AbortSignal
+  ): Promise<string>;
+  generateRawResponse(
+    context: string,
+    systemConstraints: string,
+    signal?: AbortSignal
+  ): Promise<string>;
+  generateReflection(context: string, signal?: AbortSignal): Promise<string>;
+}
+
 export class AgentIO {
-  private agents: Record<string, Agent>;
+  private agents: Record<string, AgentLike>;
   private cfg: AgentIOConfig;
 
   constructor(
-    agents: Record<string, Agent>,
+    agents: Record<string, AgentLike>,
     cfg?: Partial<AgentIOConfig>
   ) {
     this.agents = agents;
@@ -69,17 +91,22 @@ export class AgentIO {
     };
   }
 
-  async respond(actor: string, context: string, history: CoreMessage[] = []): Promise<string> {
+  private async respondWithScope(
+    actor: string,
+    context: string,
+    scope: ResponseScope,
+    history: CoreMessage[] = []
+  ): Promise<string> {
     const agent = this.agents[actor];
     if (!agent) return 'SKIP';
 
-    const attemptMetaBase = { actor, kind: 'response' } as const;
+    const attemptMetaBase = { actor, kind: `response_${scope}` } as const;
 
     let lastError: unknown = null;
     for (let attempt = 1; attempt <= this.cfg.maxAttempts; attempt++) {
       try {
         const text = await withAbortableTimeout(
-          (signal) => agent.generateResponse(context, history, signal),
+          (signal) => agent.generateResponse(context, history, scope, signal),
           this.cfg.responseTimeoutMs
         );
         const trimmed = text.trim();
@@ -102,6 +129,14 @@ export class AgentIO {
 
     // Safe public fallback in discussion phases is SKIP.
     return 'SKIP';
+  }
+
+  async respondPublic(actor: string, context: string, history: CoreMessage[] = []): Promise<string> {
+    return this.respondWithScope(actor, context, 'public', history);
+  }
+
+  async respondFaction(actor: string, context: string, history: CoreMessage[] = []): Promise<string> {
+    return this.respondWithScope(actor, context, 'faction', history);
   }
 
   async decide<T extends string>(
@@ -217,4 +252,3 @@ export class AgentIO {
     return 'No reflections.';
   }
 }
-

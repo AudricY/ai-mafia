@@ -98,7 +98,7 @@ Important:
 - If you have nothing NEW to add, reply with the single word "SKIP".
 Alive players: ${aliveNames.join(', ')}.`;
 
-      const message = await engine.agentIO.respond(member.config.name, context, []);
+      const message = await engine.agentIO.respondFaction(member.config.name, context, []);
       const trimmed = message.trim();
       const isSkip = trimmed.toUpperCase() === 'SKIP' || trimmed === '...';
 
@@ -192,4 +192,3 @@ Note: If you are blocked, the Mafia kill fails.`,
 
   return [{ kind: 'kill', actor: shooter.config.name, target, source: 'mafia' }];
 }
-

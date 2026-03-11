@@ -221,7 +221,7 @@ Instruction:
 - If you truly cannot ask any question, reply with the single word "SKIP".
       `.trim();
 
-      const rawMessage = await engine.agentIO.respond(name, context, []);
+      const rawMessage = await engine.agentIO.respondPublic(name, context, []);
       const message = processSkipVote(name, rawMessage);
       
       // Check if threshold reached after processing vote
@@ -286,7 +286,7 @@ Guidance:
 - If you have nothing useful to add, you may reply with the single word "SKIP".
       `.trim();
 
-      const rawMessage = await engine.agentIO.respond(name, context, []);
+      const rawMessage = await engine.agentIO.respondPublic(name, context, []);
       const message = processSkipVote(name, rawMessage);
       
       // Check if threshold reached after processing vote
@@ -352,7 +352,7 @@ Instruction:
 - Keep it short.
       `.trim();
 
-      const rawMessage = await engine.agentIO.respond(name, context, []);
+      const rawMessage = await engine.agentIO.respondPublic(name, context, []);
       const message = processSkipVote(name, rawMessage);
       
       // Check if threshold reached after processing vote
@@ -377,4 +377,3 @@ Instruction:
     engine.recordPublic({ type: 'SYSTEM', content: 'Discussion ended (pre-vote statements complete).' });
   }
 }
-

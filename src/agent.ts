@@ -4,6 +4,9 @@ import { logger } from './logger.js';
 import { buildPublicLedger, formatPublicLedger } from './publicLedger.js';
 import { isDryRun, dryRunSeed, fnv1a32 } from './utils.js';
 
+export type ResponseScope = 'public' | 'faction';
+type MemoryScope = 'public' | 'private';
+
 function pickDeterministicOption(options: string[], key: string): string {
   if (options.length === 0) return '';
   const h = fnv1a32(`${dryRunSeed()}|${key}|${options.join('|')}`);
@@ -32,6 +35,18 @@ export interface FactionMemory {
 
 export function createFactionMemory(faction: 'mafia'): FactionMemory {
   return { faction, sharedSummary: '', sharedWindow: [] };
+}
+
+function buildPublicEvidenceDisciplinePrompt(): string {
+  return `
+Public speaking rules:
+- Treat private notebook content as strategy guidance, not as public evidence.
+- Never present private night-action outcomes, faction-only coordination, or hidden-role knowledge as public fact.
+- Never cite your notebook, faction chat, or hidden memory as the source of a public claim.
+- If a thought comes from hidden information, convert it into a public-safe suspicion, question, or pressure, not a factual assertion.
+- Any factual claim in public speech must be supported by the public ledger or public recent events; otherwise label it as speculation or a hunch.
+- If you are not confident you can say something safely, prefer "SKIP", a targeted question, or clearly labeled uncertainty.
+  `.trim();
 }
 
 export class Agent {
@@ -236,7 +251,22 @@ ${systemConstraints ? `\n${systemConstraints.trim()}\n` : ''}
     `.trim();
   }
 
-  private buildMemoryUserMessage(situationalContext: string, decisionConstraints?: string): CoreMessage[] {
+  private buildResponseSystemPrompt(scope: ResponseScope, systemConstraints?: string): string {
+    const scopeConstraints =
+      scope === 'public'
+        ? buildPublicEvidenceDisciplinePrompt()
+        : '';
+
+    return this.buildSystemPrompt(
+      [scopeConstraints, systemConstraints?.trim()].filter(Boolean).join('\n\n')
+    );
+  }
+
+  private buildMemoryUserMessage(
+    scope: MemoryScope,
+    situationalContext: string,
+    decisionConstraints?: string
+  ): CoreMessage[] {
     // Build persistent public ledger from all observed public entries
     const ledger = buildPublicLedger(this.publicEntries);
     const ledgerText = formatPublicLedger(ledger);
@@ -259,8 +289,8 @@ ${systemConstraints ? `\n${systemConstraints.trim()}\n` : ''}
     const memoryBlock = [
       ledgerText ? `Public ledger (persistent):\n${ledgerText}` : '',
       notebookTail ? `Private notebook (tail):\n${notebookTail}` : '',
-      factionSummary ? `Faction shared summary:\n${factionSummary}` : '',
-      factionLines.length ? `Faction recent events:\n- ${factionLines.join('\n- ')}` : '',
+      scope === 'private' && factionSummary ? `Faction shared summary:\n${factionSummary}` : '',
+      scope === 'private' && factionLines.length ? `Faction recent events:\n- ${factionLines.join('\n- ')}` : '',
       publicLines.length ? `Public recent events:\n- ${publicLines.join('\n- ')}` : '',
     ]
       .filter(Boolean)
@@ -374,6 +404,7 @@ ${systemConstraints ? `\n${systemConstraints.trim()}\n` : ''}
   async generateResponse(
     systemContext: string,
     _history: CoreMessage[],
+    scope: ResponseScope,
     signal?: AbortSignal
   ): Promise<string> {
     try {
@@ -432,7 +463,7 @@ ${systemConstraints ? `\n${systemConstraints.trim()}\n` : ''}
 
       if (this.isGlmModel()) {
         try {
-          const systemPrompt = this.buildSystemPrompt(`
+          const systemPrompt = this.buildResponseSystemPrompt(scope, `
 Output format:
 - Return ONLY a JSON object with keys "public" and "note".
 - "public" is what you say aloud in the town square.
@@ -443,6 +474,7 @@ Output format:
           `);
 
           const messages: CoreMessage[] = this.buildMemoryUserMessage(
+            scope === 'public' ? 'public' : 'private',
             systemContext,
             'Now produce your response.'
           );
@@ -490,7 +522,7 @@ Output format:
         }
       }
 
-      const systemPrompt = this.buildSystemPrompt(`
+      const systemPrompt = this.buildResponseSystemPrompt(scope, `
 Output format:
 - Return a single JSON object: {"public": string, "note": string}
 - "public" is what you say aloud in the town square.
@@ -502,6 +534,7 @@ Output format:
 
       // Ignore externally-provided history by default: this Agent is stateful.
       const messages: CoreMessage[] = this.buildMemoryUserMessage(
+        scope === 'public' ? 'public' : 'private',
         systemContext,
         'Now produce your response.'
       );
@@ -653,7 +686,7 @@ Output format:
         [baseConstraints, systemAddendum?.trim()].filter(Boolean).join('\n\n')
       );
 
-      const messages: CoreMessage[] = this.buildMemoryUserMessage(context, 'Please make a decision now.');
+      const messages: CoreMessage[] = this.buildMemoryUserMessage('private', context, 'Please make a decision now.');
 
       const result = await generateText({
         model,
@@ -745,7 +778,7 @@ Output format:
       const model = this.getModel();
       const systemPrompt = this.buildSystemPrompt(systemConstraints);
 
-      const messages: CoreMessage[] = this.buildMemoryUserMessage(context);
+      const messages: CoreMessage[] = this.buildMemoryUserMessage('private', context);
 
       const result = await generateText({
         model,
