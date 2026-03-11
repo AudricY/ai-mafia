@@ -1,4 +1,4 @@
-import type { CoreMessage } from 'ai';
+import type { ModelMessage as CoreMessage } from 'ai';
 import { randomInt } from 'node:crypto';
 import { logger } from './logger.js';
 import type { Agent } from './agent.js';
@@ -217,5 +217,4 @@ export class AgentIO {
     return 'No reflections.';
   }
 }
-
 

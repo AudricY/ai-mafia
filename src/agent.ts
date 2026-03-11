@@ -1,4 +1,4 @@
-import { generateText, CoreMessage, gateway } from 'ai';
+import { generateText, gateway, Output, type ModelMessage as CoreMessage } from 'ai';
 import { PlayerConfig, Role, LogType, GameLogEntry } from './types.js';
 import { logger } from './logger.js';
 import { buildPublicLedger, formatPublicLedger } from './publicLedger.js';
@@ -367,6 +367,10 @@ ${systemConstraints ? `\n${systemConstraints.trim()}\n` : ''}
       .trim();
   }
 
+  private isGlmModel(): boolean {
+    return this.normalizeModelId(this.config.model).startsWith('zai/glm-');
+  }
+
   async generateResponse(
     systemContext: string,
     _history: CoreMessage[],
@@ -414,6 +418,77 @@ ${systemConstraints ? `\n${systemConstraints.trim()}\n` : ''}
       }
 
       const model = this.getModel();
+      const noteLogger = (note: string) => {
+        const normalizedNote = note.replace(/\n/g, ' ').trim().slice(0, this.noteMaxChars);
+        if (!normalizedNote) return;
+        this.appendToNotebook(normalizedNote);
+        logger.log({
+          type: 'THOUGHT',
+          player: this.config.name,
+          content: `NOTE: ${normalizedNote}`,
+          metadata: { visibility: 'private', kind: 'note' },
+        });
+      };
+
+      if (this.isGlmModel()) {
+        try {
+          const systemPrompt = this.buildSystemPrompt(`
+Output format:
+- Return ONLY a JSON object with keys "public" and "note".
+- "public" is what you say aloud in the town square.
+- "note" is a concise one-line private update (max ${this.noteMaxChars} chars) to help future decisions.
+- If nothing changed in your internal state, use an empty string "" for "note".
+- If you have nothing useful to add publicly, set "public" to "SKIP".
+- Do NOT reveal your role or hidden system info in "public".
+          `);
+
+          const messages: CoreMessage[] = this.buildMemoryUserMessage(
+            systemContext,
+            'Now produce your response.'
+          );
+
+          const result = await generateText({
+            model,
+            system: systemPrompt,
+            messages,
+            temperature: this.config.temperature,
+            maxOutputTokens: this.maxTokensResponse,
+            abortSignal: signal,
+            output: Output.json({
+              name: 'mafia_public_response',
+              description: 'JSON object with public speech and a private note for one Mafia turn.',
+            }),
+          });
+
+          const reasoningText = result.reasoningText ?? this.extractReasoningText(result.reasoning);
+          if (reasoningText && this.logThoughts) {
+            logger.log({
+              type: 'THOUGHT',
+              player: this.config.name,
+              content: `REASONING: ${reasoningText.slice(0, 500)}`,
+              metadata: { visibility: 'private', kind: 'reasoning' },
+            });
+          }
+
+          const structured = result.output;
+          if (structured && typeof structured === 'object' && !Array.isArray(structured)) {
+            const pub = typeof structured.public === 'string' ? structured.public.trim() : '';
+            const note = typeof structured.note === 'string' ? structured.note.trim() : '';
+            if (note) noteLogger(note);
+            if (pub.toUpperCase() === 'SKIP') return 'SKIP';
+            if (pub) return pub;
+            if (typeof structured.public === 'string') return '...';
+          }
+
+          throw new Error('structured JSON output missing string public/note fields');
+        } catch (error) {
+          logger.log({
+            type: 'SYSTEM',
+            content: `${this.config.name}: structured JSON response failed, falling back to text parsing: ${(error as Error).message}`,
+            metadata: { visibility: 'private' },
+          });
+        }
+      }
 
       const systemPrompt = this.buildSystemPrompt(`
 Output format:
@@ -440,21 +515,14 @@ Output format:
         abortSignal: signal,
       });
 
-      // Some "thinking" models (e.g. kimi-k2.5) embed reasoning in result.text.
-      // If the SDK separated reasoning into result.reasoning, log it privately.
-      if (result.reasoning?.length && this.logThoughts) {
-        const reasoningText = result.reasoning
-          .map(r => 'text' in r ? r.text : '')
-          .join(' ')
-          .slice(0, 500);
-        if (reasoningText) {
-          logger.log({
-            type: 'THOUGHT',
-            player: this.config.name,
-            content: `REASONING: ${reasoningText}`,
-            metadata: { visibility: 'private', kind: 'reasoning' },
-          });
-        }
+      const reasoningText = result.reasoningText ?? this.extractReasoningText(result.reasoning);
+      if (reasoningText && this.logThoughts) {
+        logger.log({
+          type: 'THOUGHT',
+          player: this.config.name,
+          content: `REASONING: ${reasoningText.slice(0, 500)}`,
+          metadata: { visibility: 'private', kind: 'reasoning' },
+        });
       }
       const rawText = result.text;
 
@@ -471,31 +539,13 @@ Output format:
         const pub = typeof obj.public === 'string' ? obj.public.trim() : null;
         const note = typeof obj.note === 'string' ? obj.note.trim() : null;
 
-        // Process note: enforce one-line, truncate to max length, then append to notebook
-        if (note) {
-          const normalizedNote = note.replace(/\n/g, ' ').trim().slice(0, this.noteMaxChars);
-          if (normalizedNote) {
-            this.appendToNotebook(normalizedNote);
-            // Emit as THOUGHT entry for UI consumption
-            logger.log({
-              type: 'THOUGHT',
-              player: this.config.name,
-              content: `NOTE: ${normalizedNote}`,
-              metadata: { visibility: 'private', kind: 'note' },
-            });
-          }
-        }
+        if (note) noteLogger(note);
 
         if (pub) return pub;
 
-        // Model returned valid JSON with an empty public field (e.g. {"public": "", "note": "..."}).
-        // The note was already processed above. Return graceful silence instead of
-        // falling through to "unparseable" error logging.
         if (typeof obj.public === 'string') return '...';
       }
 
-      // JSON parsing failed — try to salvage a "public" value from truncated JSON
-      // (e.g. model output: `{"public": "some message...` cut off by maxTokens)
       const pubRegex = /"public"\s*:\s*"((?:[^"\\]|\\.)*)(?:"|$)/;
       const pubMatch = rawText.match(pubRegex);
       if (pubMatch?.[1]) {
@@ -510,29 +560,14 @@ Output format:
         }
       }
 
-      // Reasoning model fallback: chain-of-thought models (kimi-k2.5, glm-5) may
-      // embed the JSON answer after their reasoning, or put everything in reasoning
-      // tokens leaving result.text empty.
-      const textForFallback = rawText || this.extractReasoningText(result.reasoning);
+      const textForFallback = rawText || reasoningText;
       if (textForFallback) {
-        // Try finding the LAST JSON object (CoT models put reasoning first, answer last)
         const lastJson = this.tryParseLastJsonObject(textForFallback);
         if (lastJson && typeof lastJson === 'object' && lastJson !== null) {
           const obj = lastJson as { public?: unknown; note?: unknown };
           const pub = typeof obj.public === 'string' ? obj.public.trim() : null;
           const note = typeof obj.note === 'string' ? obj.note.trim() : null;
-          if (note) {
-            const normalizedNote = note.replace(/\n/g, ' ').trim().slice(0, this.noteMaxChars);
-            if (normalizedNote) {
-              this.appendToNotebook(normalizedNote);
-              logger.log({
-                type: 'THOUGHT',
-                player: this.config.name,
-                content: `NOTE: ${normalizedNote}`,
-                metadata: { visibility: 'private', kind: 'note' },
-              });
-            }
-          }
+          if (note) noteLogger(note);
           if (pub) {
             logger.log({
               type: 'SYSTEM',
@@ -543,7 +578,6 @@ Output format:
           }
         }
 
-        // Try regex salvage on the fallback text too (e.g. truncated JSON in reasoning)
         const fallbackPubMatch = textForFallback.match(pubRegex);
         if (fallbackPubMatch?.[1]) {
           const salvaged = fallbackPubMatch[1].replace(/\\"/g, '"').replace(/\\n/g, ' ').trim();
@@ -558,14 +592,10 @@ Output format:
         }
       }
 
-      // Check if the tail of the raw text is a known keyword (thinking models
-      // may dump CoT then write "SKIP" at the end without JSON wrapping).
       const tailText = (textForFallback || rawText).trim();
       const tailUpper = tailText.slice(-20).trim().toUpperCase();
       if (tailUpper === 'SKIP') return 'SKIP';
 
-      // Last resort: never dump raw chain-of-thought into public chat.
-      // Log the raw output privately for debugging, return safe silence.
       logger.log({
         type: 'SYSTEM',
         content: `${this.config.name}: unparseable response, returning silence. Raw (truncated): ${rawText.slice(0, 200)}`,
@@ -613,7 +643,6 @@ Output format:
       const baseConstraints = `
 You must choose exactly one option from the list below.
 Options: ${JSON.stringify(options)}
-
 Output format:
 - Return a single JSON object: {"choice": string, "rationale": string}
 - "choice" MUST be exactly one of the options.
@@ -624,7 +653,6 @@ Output format:
         [baseConstraints, systemAddendum?.trim()].filter(Boolean).join('\n\n')
       );
 
-      // Ignore externally-provided history by default: this Agent is stateful.
       const messages: CoreMessage[] = this.buildMemoryUserMessage(context, 'Please make a decision now.');
 
       const result = await generateText({
@@ -636,22 +664,18 @@ Output format:
         abortSignal: signal,
       });
 
-      // Try parsing JSON from result.text, then fall back to last-JSON extraction
-      // and reasoning text for thinking models (kimi-k2.5, glm-5).
       const textSources = [result.text];
-      const reasoningFallback = this.extractReasoningText(result.reasoning);
+      const reasoningFallback = result.reasoningText ?? this.extractReasoningText(result.reasoning);
       if (reasoningFallback && !result.text.trim()) {
         textSources.push(reasoningFallback);
       }
 
       for (const source of textSources) {
-        // Try standard first-to-last bracket JSON extraction
         const parsed = this.tryParseJsonObject(source);
         const obj = (parsed && typeof parsed === 'object' && parsed !== null)
           ? parsed as { choice?: unknown; rationale?: unknown }
           : null;
 
-        // If that fails, try finding the last JSON object (for CoT-then-answer models)
         const lastParsed = obj ? null : this.tryParseLastJsonObject(source);
         const lastObj = (lastParsed && typeof lastParsed === 'object' && lastParsed !== null)
           ? lastParsed as { choice?: unknown; rationale?: unknown }
@@ -682,13 +706,10 @@ Output format:
         }
       }
 
-      // No JSON found — fall back to substring matching.
-      // For reasoning models that dump CoT into text, prefer matching against
-      // only the tail (last 200 chars) to avoid picking up names mentioned early
-      // in the reasoning rather than the final answer.
       const raw = result.text.trim() || reasoningFallback;
       const tail = raw.length > 200 ? raw.slice(-200) : raw;
       const matched = this.matchOption(tail, options) ?? this.matchOption(raw, options);
+
       if (this.logThoughts) {
         logger.log({
           type: 'THOUGHT',
@@ -696,6 +717,7 @@ Output format:
           content: `Decision output (unparsed): ${raw.slice(0, 300)}`,
         });
       }
+
       return matched ?? options[0];
     } catch (error) {
        logger.log({

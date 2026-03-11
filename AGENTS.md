@@ -93,6 +93,7 @@ Only required for live games. Dry-run needs nothing.
 - **Fail fast** on invalid config; graceful degradation on AI failures (retry/skip)
 - **Tests**: Use `node:test` + `node:assert/strict`. Test files live next to source as `*.test.ts`
 - **Roles are modular**: each role's night behavior is isolated in `roleModules/`
+- **Provider quirk**: `zai/glm-5` and `moonshotai/kimi-k2.5` over AI Gateway are still unreliable for fully structured freeform turns. As of March 11, 2026, `generateObject()` / `Output.object()` worked for decision-style and plan-style schemas in probes, but `kimi-k2.5` still failed on the game's `{ public, note }` response shape. Keep `generateText()` + JSON salvage fallbacks for discussion turns unless you re-probe after SDK/provider changes.
 
 ## Continuous Documentation
 

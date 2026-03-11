@@ -16,34 +16,34 @@ log_thoughts: true
 
 players:
   - name: "Alice"
-    model: "anthropic/claude-sonnet-4.6"
+    model: "zai/glm-5"
 
   - name: "Bob"
     model: "zai/glm-5"
 
   - name: "Charlie"
-    model: "moonshotai/kimi-k2.5"
+    model: "zai/glm-5"
 
   - name: "Dave"
-    model: "anthropic/claude-sonnet-4.6"
+    model: "zai/glm-5"
     
   - name: "Eve"
     model: "zai/glm-5"
 
   - name: "Frank"
-    model: "moonshotai/kimi-k2.5"
+    model: "zai/glm-5"
 
   - name: "Grace"
     model: "zai/glm-5"
 
   - name: "Henry"
-    model: "moonshotai/kimi-k2.5"
+    model: "zai/glm-5"
 
   - name: "Ivy"
     model: "zai/glm-5"
 
   - name: "Judy"
-    model: "moonshotai/kimi-k2.5"
+    model: "zai/glm-5"
 
   - name: "Kyle"
     model: "zai/glm-5"
@@ -71,4 +71,3 @@ roles:
 #   roleblocker: 1
 #   vigilante: 1
 #   villager: 3
-
