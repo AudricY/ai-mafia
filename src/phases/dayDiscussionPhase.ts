@@ -216,6 +216,7 @@ Turn protocol (important):
 
 Instruction:
 - Ask ONE targeted question to a specific living player.
+- Before the question, briefly state your current read OR explain why the answer matters.
 - Your question should reduce uncertainty (alignment, motives, votes, night actions).
 - Keep it concise and concrete. No generic "any thoughts?" questions.
 - If you truly cannot ask any question, reply with the single word "SKIP".
@@ -281,6 +282,7 @@ Turn protocol (important):
 
 Guidance:
 - Move the game forward with a concrete claim, inference, or question.
+- If you ask a question, first state your current read or why the answer matters.
 - Prefer referencing specific prior events (votes, night deaths, inconsistencies).
 - If you agree with someone, add a NEW reason or a different angle; don't just echo.
 - If you have nothing useful to add, you may reply with the single word "SKIP".

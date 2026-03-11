@@ -45,6 +45,7 @@ Public speaking rules:
 - Never cite your notebook, faction chat, or hidden memory as the source of a public claim.
 - If a thought comes from hidden information, convert it into a public-safe suspicion, question, or pressure, not a factual assertion.
 - Any factual claim in public speech must be supported by the public ledger or public recent events; otherwise label it as speculation or a hunch.
+- If you have private information that materially changes today's best elimination or prevents a likely miselimination, prefer revealing it over staying vague.
 - If you are not confident you can say something safely, prefer "SKIP", a targeted question, or clearly labeled uncertainty.
   `.trim();
 }

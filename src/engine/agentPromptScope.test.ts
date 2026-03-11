@@ -90,6 +90,7 @@ test('public response prompt includes evidence-discipline hardening', () => {
   assert.match(prompt, /Treat private notebook content as strategy guidance, not as public evidence\./);
   assert.match(prompt, /Never present private night-action outcomes, faction-only coordination, or hidden-role knowledge as public fact\./);
   assert.match(prompt, /Any factual claim in public speech must be supported by the public ledger or public recent events; otherwise label it as speculation or a hunch\./);
+  assert.match(prompt, /If you have private information that materially changes today's best elimination or prevents a likely miselimination, prefer revealing it over staying vague\./);
 });
 
 test('faction response prompt does not inject public-only evidence discipline block', () => {

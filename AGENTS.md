@@ -95,6 +95,7 @@ Only required for live games. Dry-run needs nothing.
 - **Roles are modular**: each role's night behavior is isolated in `roleModules/`
 - **Provider quirk**: `zai/glm-5` and `moonshotai/kimi-k2.5` over AI Gateway are still unreliable for fully structured freeform turns. As of March 11, 2026, `generateObject()` / `Output.object()` worked for decision-style and plan-style schemas in probes, but `kimi-k2.5` still failed on the game's `{ public, note }` response shape. Keep `generateText()` + JSON salvage fallbacks for discussion turns unless you re-probe after SDK/provider changes.
 - **Leakage hardening**: Public day-discussion prompts should not see mafia faction memory directly. Keep `Faction shared summary` / `Faction recent events` available for faction chat, mafia council planning, and other private reasoning paths, but exclude them from normal public speech generation. Public prompts may still use the private notebook for strategy, but notebook content is not admissible as public evidence.
+- **Minimal discussion prompting**: To reduce generic Day 1 theory loops without over-scaffolding, public prompts now require a player to briefly state a read or explain why a question matters before asking it. Public prompts also nudge agents to reveal private information when it would materially change today's best elimination or prevent a likely miselimination.
 
 ## Continuous Documentation
 
