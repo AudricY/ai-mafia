@@ -3,7 +3,7 @@ import * as path from 'path';
 import { GameLogEntry } from '../types.js';
 
 /**
- * Resolves a replay path. If 'latest', it finds the most recent game-*.json in logs/.
+ * Resolves a replay path. If 'latest', it finds the most recent game-* replay log in logs/.
  */
 export function resolveReplayPath(arg: string): string {
   const logDir = path.join(process.cwd(), 'logs');
@@ -13,7 +13,7 @@ export function resolveReplayPath(arg: string): string {
       throw new Error(`Log directory not found: ${logDir}`);
     }
     const files = fs.readdirSync(logDir)
-      .filter(f => f.startsWith('game-') && f.endsWith('.json'))
+      .filter(f => f.startsWith('game-') && (f.endsWith('.jsonl') || f.endsWith('.json')))
       .sort()
       .reverse();
     
@@ -27,10 +27,15 @@ export function resolveReplayPath(arg: string): string {
   if (!fs.existsSync(arg)) {
     const inLogs = path.join(logDir, arg);
     if (fs.existsSync(inLogs)) return inLogs;
-    
-    // Also try adding .json if missing
-    if (!arg.endsWith('.json')) {
-      const withJson = arg + '.json';
+
+    // Also try adding the supported replay extensions if missing.
+    if (!arg.endsWith('.json') && !arg.endsWith('.jsonl')) {
+      const withJsonl = `${arg}.jsonl`;
+      if (fs.existsSync(withJsonl)) return withJsonl;
+      const inLogsWithJsonl = path.join(logDir, withJsonl);
+      if (fs.existsSync(inLogsWithJsonl)) return inLogsWithJsonl;
+
+      const withJson = `${arg}.json`;
       if (fs.existsSync(withJson)) return withJson;
       const inLogsWithJson = path.join(logDir, withJson);
       if (fs.existsSync(inLogsWithJson)) return inLogsWithJson;
@@ -50,11 +55,25 @@ export function loadReplayEntries(filePath: string): GameLogEntry[] {
 
   const content = fs.readFileSync(filePath, 'utf-8');
   try {
-    const entries = JSON.parse(content);
-    if (!Array.isArray(entries)) {
-      throw new Error('Replay file is not an array of log entries');
+    const trimmed = content.trim();
+
+    if (trimmed === '') {
+      return [];
     }
-    return entries as GameLogEntry[];
+
+    if (filePath.endsWith('.jsonl')) {
+      return trimmed
+        .split('\n')
+        .filter(line => line.trim().length > 0)
+        .map(line => JSON.parse(line) as GameLogEntry);
+    }
+
+    const entries = JSON.parse(trimmed);
+    if (Array.isArray(entries)) {
+      return entries as GameLogEntry[];
+    }
+
+    throw new Error('Replay file is not an array of log entries');
   } catch (err) {
     if (err instanceof Error) {
       throw new Error(`Failed to parse replay file: ${err.message}`);
@@ -77,4 +96,3 @@ export function inferPlayers(entries: GameLogEntry[]): string[] {
   }
   return Array.from(players).sort();
 }
-

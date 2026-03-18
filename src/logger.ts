@@ -52,7 +52,7 @@ export class GameLogger {
     if (!fs.existsSync(logDir)) {
       fs.mkdirSync(logDir);
     }
-    this.logFile = path.join(logDir, `game-${timestamp}.json`);
+    this.logFile = path.join(logDir, `game-${timestamp}.jsonl`);
     this.transcriptFile = path.join(logDir, `transcript-${timestamp}.txt`);
 
     // The logger subscribes to the global event bus and persists/prints entries.
@@ -65,7 +65,7 @@ export class GameLogger {
    * Enable or disable writing structured logs / transcripts to disk.
    *
    * This is primarily used for dry-run mode so that development runs don't
-   * accumulate `logs/game-*.json` and `logs/transcript-*.txt` files.
+   * accumulate `logs/game-*.jsonl` and `logs/transcript-*.txt` files.
    *
    * Console output and in-memory logs remain unaffected.
    */
@@ -140,7 +140,7 @@ export class GameLogger {
 
   private handleEntry(entry: GameLogEntry) {
     this.logs.push(entry);
-    this.flush();
+    this.flushEntry(entry);
 
     for (const sub of this.subscribers) {
       try {
@@ -211,66 +211,57 @@ export class GameLogger {
     this.unsubscribeEventBus?.();
   }
 
-  private flush() {
+  private flushEntry(entry: GameLogEntry) {
     if (!this.persistenceEnabled) return;
     try {
-      fs.writeFileSync(this.logFile, JSON.stringify(this.logs, null, 2));
-      fs.writeFileSync(this.transcriptFile, this.buildTranscriptText(this.logs));
+      fs.appendFileSync(this.logFile, `${JSON.stringify(entry)}\n`);
+      const transcriptLine = this.formatTranscriptLine(entry);
+      if (transcriptLine !== null) {
+        fs.appendFileSync(this.transcriptFile, `${transcriptLine}\n`);
+      }
     } catch (err) {
       this.persistenceEnabled = false;
       console.error(`[Logger] Write failed, disabling persistence: ${err instanceof Error ? err.message : err}`);
     }
   }
 
-  private buildTranscriptText(entries: readonly GameLogEntry[]): string {
-    const lines: string[] = [];
+  private formatTranscriptLine(entry: GameLogEntry): string | null {
+    // Prefer explicit visibility if present. If absent, fall back to a conservative
+    // include-list so we don't leak private events (THOUGHT, FACTION_CHAT, etc).
+    const visibility = entry.metadata?.visibility;
+    const isExplicitlyPublic = visibility === 'public';
+    const isAllowedType =
+      entry.type === 'SYSTEM' ||
+      entry.type === 'CHAT' ||
+      entry.type === 'VOTE' ||
+      entry.type === 'DEATH' ||
+      entry.type === 'WIN';
 
-    for (const entry of entries) {
-      // Prefer explicit visibility if present. If absent, fall back to a conservative
-      // include-list so we don't leak private events (THOUGHT, FACTION_CHAT, etc).
-      const visibility = entry.metadata?.visibility;
-      const isExplicitlyPublic = visibility === 'public';
-      const isAllowedType =
-        entry.type === 'SYSTEM' ||
-        entry.type === 'CHAT' ||
-        entry.type === 'VOTE' ||
-        entry.type === 'DEATH' ||
-        entry.type === 'WIN';
+    if (!isExplicitlyPublic && !isAllowedType) return null;
+    if (entry.type === 'THOUGHT' || entry.type === 'FACTION_CHAT') return null;
 
-      if (!isExplicitlyPublic && !isAllowedType) continue;
-      if (entry.type === 'THOUGHT' || entry.type === 'FACTION_CHAT') continue;
-
-      if (entry.type === 'SYSTEM') {
-        lines.push(`[SYSTEM] ${entry.content}`);
-        continue;
-      }
-
-      if (entry.type === 'CHAT') {
-        if (entry.player) lines.push(`${entry.player}: ${entry.content}`);
-        else lines.push(`[CHAT] ${entry.content}`);
-        continue;
-      }
-
-      if (entry.type === 'VOTE') {
-        lines.push(`[VOTE] ${entry.player ? `${entry.player} ` : ''}${entry.content}`.trimEnd());
-        continue;
-      }
-
-      if (entry.type === 'DEATH') {
-        lines.push(`[DEATH] ${entry.player ? `${entry.player} ` : ''}${entry.content}`.trimEnd());
-        continue;
-      }
-
-      if (entry.type === 'WIN') {
-        lines.push(`[WIN] ${entry.content}`);
-        continue;
-      }
-
-      // Fallback formatting (should be rare with current filters)
-      lines.push(`[${entry.type}] ${entry.player ? `${entry.player}: ` : ''}${entry.content}`);
+    if (entry.type === 'SYSTEM') {
+      return `[SYSTEM] ${entry.content}`;
     }
 
-    return `${lines.join('\n')}\n`;
+    if (entry.type === 'CHAT') {
+      return entry.player ? `${entry.player}: ${entry.content}` : `[CHAT] ${entry.content}`;
+    }
+
+    if (entry.type === 'VOTE') {
+      return `[VOTE] ${entry.player ? `${entry.player} ` : ''}${entry.content}`.trimEnd();
+    }
+
+    if (entry.type === 'DEATH') {
+      return `[DEATH] ${entry.player ? `${entry.player} ` : ''}${entry.content}`.trimEnd();
+    }
+
+    if (entry.type === 'WIN') {
+      return `[WIN] ${entry.content}`;
+    }
+
+    // Fallback formatting (should be rare with current filters)
+    return `[${entry.type}] ${entry.player ? `${entry.player}: ` : ''}${entry.content}`;
   }
 }
 
