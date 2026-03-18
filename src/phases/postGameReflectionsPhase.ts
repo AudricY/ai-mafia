@@ -1,38 +1,16 @@
 import type { GameEngine } from '../engine/gameEngine.js';
-import type { GameLogEntry } from '../types.js';
+import { formatPublicTranscriptLine } from '../logging/transcript.js';
 import { isMafiaRole } from '../utils.js';
 
 export class PostGameReflectionsPhase {
   async run(engine: GameEngine): Promise<void> {
     engine.recordPublic({ type: 'SYSTEM', content: '--- Post-game reflections ---' });
 
-    // Build a compact transcript from public history entries
-    // This gives all players (including dead ones) the same context
-    const publicHistory = engine.state.history.filter(e => {
-      const visibility = e.metadata?.visibility;
-      const publicTypes = new Set<GameLogEntry['type']>(['CHAT', 'VOTE', 'DEATH', 'WIN']);
-      if (publicTypes.has(e.type)) return true;
-      if (e.type === 'SYSTEM') {
-        return visibility !== 'private' && visibility !== 'faction';
-      }
-      return visibility === 'public';
-    });
-
-    // Format transcript for prompt
-    const transcriptLines: string[] = [];
-    for (const entry of publicHistory) {
-      if (entry.type === 'SYSTEM') {
-        transcriptLines.push(`[SYSTEM] ${entry.content}`);
-      } else if (entry.type === 'CHAT' && entry.player) {
-        transcriptLines.push(`${entry.player}: ${entry.content}`);
-      } else if (entry.type === 'VOTE' && entry.player) {
-        transcriptLines.push(`[VOTE] ${entry.player} ${entry.content}`);
-      } else if (entry.type === 'DEATH' && entry.player) {
-        transcriptLines.push(`[DEATH] ${entry.player} ${entry.content}`);
-      } else if (entry.type === 'WIN') {
-        transcriptLines.push(`[WIN] ${entry.content}`);
-      }
-    }
+    // Build a compact transcript from public history entries.
+    // This matches the append-only tail transcript format.
+    const transcriptLines = engine.state.history
+      .map(entry => formatPublicTranscriptLine(entry))
+      .filter((line): line is string => line !== null);
     const transcript = transcriptLines.join('\n');
 
     // Get all players (alive + dead)
@@ -102,4 +80,3 @@ Give a brief post-game reflection (2-3 sentences). You can now discuss your true
     }
   }
 }
-

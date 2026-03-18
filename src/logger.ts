@@ -3,6 +3,7 @@ import * as path from 'path';
 import chalk from 'chalk';
 import { GameLogEntry, LogType, Role } from './types.js';
 import { eventBus } from './events/index.js';
+import { formatPublicTranscriptLine } from './logging/transcript.js';
 
 const ROLE_COLORS: Record<string, (text: string) => string> = {
   mafia: chalk.red,
@@ -215,7 +216,7 @@ export class GameLogger {
     if (!this.persistenceEnabled) return;
     try {
       fs.appendFileSync(this.logFile, `${JSON.stringify(entry)}\n`);
-      const transcriptLine = this.formatTranscriptLine(entry);
+      const transcriptLine = formatPublicTranscriptLine(entry);
       if (transcriptLine !== null) {
         fs.appendFileSync(this.transcriptFile, `${transcriptLine}\n`);
       }
@@ -223,45 +224,6 @@ export class GameLogger {
       this.persistenceEnabled = false;
       console.error(`[Logger] Write failed, disabling persistence: ${err instanceof Error ? err.message : err}`);
     }
-  }
-
-  private formatTranscriptLine(entry: GameLogEntry): string | null {
-    // Prefer explicit visibility if present. If absent, fall back to a conservative
-    // include-list so we don't leak private events (THOUGHT, FACTION_CHAT, etc).
-    const visibility = entry.metadata?.visibility;
-    const isExplicitlyPublic = visibility === 'public';
-    const isAllowedType =
-      entry.type === 'SYSTEM' ||
-      entry.type === 'CHAT' ||
-      entry.type === 'VOTE' ||
-      entry.type === 'DEATH' ||
-      entry.type === 'WIN';
-
-    if (!isExplicitlyPublic && !isAllowedType) return null;
-    if (entry.type === 'THOUGHT' || entry.type === 'FACTION_CHAT') return null;
-
-    if (entry.type === 'SYSTEM') {
-      return `[SYSTEM] ${entry.content}`;
-    }
-
-    if (entry.type === 'CHAT') {
-      return entry.player ? `${entry.player}: ${entry.content}` : `[CHAT] ${entry.content}`;
-    }
-
-    if (entry.type === 'VOTE') {
-      return `[VOTE] ${entry.player ? `${entry.player} ` : ''}${entry.content}`.trimEnd();
-    }
-
-    if (entry.type === 'DEATH') {
-      return `[DEATH] ${entry.player ? `${entry.player} ` : ''}${entry.content}`.trimEnd();
-    }
-
-    if (entry.type === 'WIN') {
-      return `[WIN] ${entry.content}`;
-    }
-
-    // Fallback formatting (should be rare with current filters)
-    return `[${entry.type}] ${entry.player ? `${entry.player}: ` : ''}${entry.content}`;
   }
 }
 
