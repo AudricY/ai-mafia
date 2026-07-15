@@ -1,6 +1,6 @@
 # AI Mafia
 
-Autonomous Mafia played by LLM agents. Node.js 20+, strict TypeScript, pnpm, Vercel AI SDK + AI Gateway, React/Ink, YAML/Zod, and `node:test`.
+Autonomous Mafia played by LLM agents. Node.js 22.13+, strict TypeScript, pnpm, Vercel AI SDK + AI Gateway, React/Ink, YAML/Zod, and `node:test`.
 
 ## Read first
 
@@ -13,8 +13,9 @@ Autonomous Mafia played by LLM agents. Node.js 20+, strict TypeScript, pnpm, Ver
 - [docs/workflows/agent-runtime.md](docs/workflows/agent-runtime.md): prompts, privacy, provider fallbacks
 - [docs/workflows/logging-and-replay.md](docs/workflows/logging-and-replay.md): log and replay contracts
 
-## Guardrails
+## Agent behaviour
 
+- self drive git commits
 - Use async/await, strict types, and no `any`.
 - Add colocated `*.test.ts` coverage for behavior changes; run `pnpm check && pnpm test`.
 - Put durable discoveries in the relevant focused doc, not this file.
