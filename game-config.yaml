@@ -16,37 +16,37 @@ log_thoughts: true
 
 players:
   - name: "Alice"
-    model: "openai/gpt-5.4-mini"
+    model: "openai/gpt-5.6-luna"
 
   - name: "Bob"
-    model: "openai/gpt-5.4-mini"
+    model: "xai/grok-4.5"
 
   - name: "Charlie"
-    model: "zai/glm-5"
+    model: "meta/muse-spark-1.1"
 
   - name: "Dave"
-    model: "zai/glm-5"
+    model: "openai/gpt-5.6-luna"
     
   - name: "Eve"
-    model: "zai/glm-5"
+    model: "xai/grok-4.5"
 
   - name: "Frank"
-    model: "zai/glm-5"
+    model: "meta/muse-spark-1.1"
 
   - name: "Grace"
-    model: "openai/gpt-5.4-mini"
+    model: "openai/gpt-5.6-luna"
 
   - name: "Henry"
-    model: "openai/gpt-5.4-mini"
+    model: "xai/grok-4.5"
 
   - name: "Ivy"
-    model: "openai/gpt-5.4-mini"
+    model: "meta/muse-spark-1.1"
 
   - name: "Judy"
-    model: "zai/glm-5"
+    model: "openai/gpt-5.6-luna"
 
   - name: "Kyle"
-    model: "openai/gpt-5.4-mini"
+    model: "xai/grok-4.5"
 
 roles:
   Alice: godfather          # mafia

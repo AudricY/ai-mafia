@@ -56,6 +56,10 @@ Models use AI Gateway routing: `provider/model`
 
 Examples: `openai/gpt-5.2`, `anthropic/claude-sonnet-4.5`, `xai/grok-4.1-fast-reasoning`, `google/gemini-3-pro-preview`, `deepseek/deepseek-v3.2-thinking`
 
+GPT 5.6 variant names are part of the model slug. For example, Luna is
+`openai/gpt-5.6-luna` (not a separate provider or model). Other current model
+slugs used by the project include `xai/grok-4.5` and `meta/muse-spark-1.1`.
+
 ## Key tuning parameters
 
 | Parameter | Default | Purpose |
