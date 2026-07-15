@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { computeOpenDiscussionMaxMessages, parseSkipVoteToken } from './dayDiscussionPhase.js';
+import { DayDiscussionPhase } from './dayDiscussionPhase.js';
 
 test('parseSkipVoteToken: token-only message (vote)', () => {
   const result = parseSkipVoteToken('VOTE_SKIP_DISCUSSION');
@@ -150,3 +151,55 @@ test('computeOpenDiscussionMaxMessages: increases with day (monotonic, clamped t
   assert.equal(d3, d10, 'expected day beyond plannedRounds to clamp to the max budget');
 });
 
+test('DayDiscussionPhase treats public fallback error line as chat, not skip', async () => {
+  const phase = new DayDiscussionPhase();
+  const entries: Array<{ type: string; player?: string; content: string }> = [];
+  const privateEvents: string[] = [];
+
+  const engine = {
+    state: {
+      round: 1,
+      phase: 'day_discussion',
+    },
+    config: {
+      rounds: 1,
+      discussion_open_floor: 1,
+      discussion_open_cap: 1,
+      discussion_open_per_player_base: 1,
+      discussion_open_per_player_round_bonus: 0,
+    },
+    roleCounts: {},
+    lastNightDeaths: [],
+    agents: {
+      Alice: {
+        observePrivateEvent(message: string) {
+          privateEvents.push(message);
+        },
+      },
+    },
+    getAlivePlayers() {
+      return [{ config: { name: 'Alice' } }];
+    },
+    getVoteTallyForDay() {
+      return null;
+    },
+    recordPublic(entry: { type: string; player?: string; content: string }) {
+      entries.push(entry);
+    },
+    agentIO: {
+      async respondPublic() {
+        return 'I hit a response error and cannot answer this turn.';
+      },
+    },
+  };
+
+  await phase.run(engine as never);
+
+  const chatEntries = entries.filter(entry => entry.type === 'CHAT');
+  assert.ok(chatEntries.length >= 1);
+  assert.ok(
+    chatEntries.some(entry => entry.content === 'I hit a response error and cannot answer this turn.')
+  );
+  assert.equal(entries.some(entry => entry.content.includes('silence settled over the town')), false);
+  assert.equal(privateEvents.includes('You chose to SKIP this turn.'), false);
+});

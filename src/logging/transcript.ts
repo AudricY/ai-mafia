@@ -18,6 +18,17 @@ function formatTaggedLine(type: GameLogEntry['type'], player: string | undefined
   return `[${type}]${playerTag}${spacer}${content}`.trimEnd();
 }
 
+function inferVisibilityTag(entry: GameLogEntry): 'PUBLIC' | 'PRIVATE' | 'FACTION' {
+  const visibility = entry.metadata?.visibility;
+  if (visibility === 'public') return 'PUBLIC';
+  if (visibility === 'private') return 'PRIVATE';
+  if (visibility === 'faction') return 'FACTION';
+
+  if (entry.type === 'FACTION_CHAT') return 'FACTION';
+  if (entry.type === 'THOUGHT' || entry.type === 'ACTION') return 'PRIVATE';
+  return 'PUBLIC';
+}
+
 export function isPublicTranscriptEntry(entry: GameLogEntry): boolean {
   if (entry.type === 'THOUGHT' || entry.type === 'FACTION_CHAT') {
     return false;
@@ -63,4 +74,12 @@ export function formatPublicTranscriptLine(entry: GameLogEntry): string | null {
   }
 
   return formatTaggedLine(entry.type, entry.player, content);
+}
+
+export function formatTailTranscriptLine(entry: GameLogEntry): string {
+  const visibilityTag = inferVisibilityTag(entry);
+  const content = normalizeTranscriptContent(entry.content);
+  const playerTag = entry.player ? `[${entry.player}]` : '';
+  const spacer = content.length > 0 ? ' ' : '';
+  return `[${visibilityTag}][${entry.type}]${playerTag}${spacer}${content}`.trimEnd();
 }

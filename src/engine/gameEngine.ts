@@ -13,7 +13,7 @@ import { NightPhase } from '../phases/nightPhase.ts';
 import { DayDiscussionPhase } from '../phases/dayDiscussionPhase.ts';
 import { DayVotingPhase } from '../phases/dayVotingPhase.ts';
 import { PostGameReflectionsPhase } from '../phases/postGameReflectionsPhase.ts';
-import { isDryRun, isMafiaRole } from '../utils.js';
+import { isDryRun, isMafiaRole, isTownRole } from '../utils.js';
 
 function mulberry32(seed: number): () => number {
   let t = seed >>> 0;
@@ -252,13 +252,13 @@ export class GameEngine {
   checkWin(): boolean {
     const alive = this.getAlivePlayers();
     const mafiaCount = alive.filter(p => isMafiaRole(p.role)).length;
-    const villagerCount = alive.length - mafiaCount;
+    const townCount = alive.filter(p => isTownRole(p.role)).length;
 
     if (mafiaCount === 0) {
       this.state.winners = 'villagers';
       return true;
     }
-    if (mafiaCount >= villagerCount) {
+    if (mafiaCount >= townCount) {
       this.state.winners = 'mafia';
       return true;
     }
@@ -593,5 +593,4 @@ export class GameEngine {
     );
   }
 }
-
 

@@ -81,3 +81,5 @@ During any discussion sub-phase, players can include `VOTE_SKIP_DISCUSSION` on i
 - **Plurality wins** — player with the most votes is eliminated and their role is revealed.
 - **Tie or majority skip** — no elimination.
 - Jester/Executioner co-wins are checked immediately after a day elimination.
+
+Win-condition note: only actual Town roles count for mafia parity. Neutral roles such as Jester and Executioner do not delay a mafia parity win.

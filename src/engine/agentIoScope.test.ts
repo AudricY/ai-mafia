@@ -40,3 +40,55 @@ test('AgentIO respondPublic and respondFaction dispatch distinct scopes', async 
   assert.equal(factionReply, 'faction reply');
   assert.deepEqual(calls, ['public', 'faction']);
 });
+
+test('AgentIO respondPublic returns explicit public fallback after failures', async () => {
+  const agentIO = new AgentIO(
+    {
+      Alice: {
+        async generateResponse(): Promise<string> {
+          throw new Error('boom');
+        },
+        async generateDecision(context: string, options: string[]): Promise<string> {
+          void context;
+          return options[0] ?? '';
+        },
+        async generateRawResponse(): Promise<string> {
+          return '';
+        },
+        async generateReflection(): Promise<string> {
+          return 'reflection';
+        },
+      },
+    },
+    { maxAttempts: 1, retryBackoffMs: 0 }
+  );
+
+  const reply = await agentIO.respondPublic('Alice', 'Day chat context', []);
+  assert.equal(reply, 'I hit a response error and cannot answer this turn.');
+});
+
+test('AgentIO respondFaction does not use the public fallback after failures', async () => {
+  const agentIO = new AgentIO(
+    {
+      Alice: {
+        async generateResponse(): Promise<string> {
+          throw new Error('boom');
+        },
+        async generateDecision(context: string, options: string[]): Promise<string> {
+          void context;
+          return options[0] ?? '';
+        },
+        async generateRawResponse(): Promise<string> {
+          return '';
+        },
+        async generateReflection(): Promise<string> {
+          return 'reflection';
+        },
+      },
+    },
+    { maxAttempts: 1, retryBackoffMs: 0 }
+  );
+
+  const reply = await agentIO.respondFaction('Alice', 'Night faction context', []);
+  assert.equal(reply, 'SKIP');
+});

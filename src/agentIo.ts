@@ -91,14 +91,14 @@ export class AgentIO {
     };
   }
 
-  private async respondWithScope(
+  private async tryRespondWithScope(
     actor: string,
     context: string,
     scope: ResponseScope,
     history: CoreMessage[] = []
-  ): Promise<string> {
+  ): Promise<string | null> {
     const agent = this.agents[actor];
-    if (!agent) return 'SKIP';
+    if (!agent) return null;
 
     const attemptMetaBase = { actor, kind: `response_${scope}` } as const;
 
@@ -127,16 +127,17 @@ export class AgentIO {
       }
     }
 
-    // Safe public fallback in discussion phases is SKIP.
-    return 'SKIP';
+    return null;
   }
 
   async respondPublic(actor: string, context: string, history: CoreMessage[] = []): Promise<string> {
-    return this.respondWithScope(actor, context, 'public', history);
+    const reply = await this.tryRespondWithScope(actor, context, 'public', history);
+    return reply ?? 'I hit a response error and cannot answer this turn.';
   }
 
   async respondFaction(actor: string, context: string, history: CoreMessage[] = []): Promise<string> {
-    return this.respondWithScope(actor, context, 'faction', history);
+    const reply = await this.tryRespondWithScope(actor, context, 'faction', history);
+    return reply ?? 'SKIP';
   }
 
   async decide<T extends string>(

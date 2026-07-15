@@ -9,8 +9,21 @@ const MAFIA_ROLES: ReadonlySet<Role> = new Set<Role>([
   'forger',
 ]);
 
+const NEUTRAL_ROLES: ReadonlySet<Role> = new Set<Role>([
+  'jester',
+  'executioner',
+]);
+
 export function isMafiaRole(role: Role | undefined): boolean {
   return role !== undefined && MAFIA_ROLES.has(role);
+}
+
+export function isNeutralRole(role: Role | undefined): boolean {
+  return role !== undefined && NEUTRAL_ROLES.has(role);
+}
+
+export function isTownRole(role: Role | undefined): boolean {
+  return role !== undefined && !isMafiaRole(role) && !isNeutralRole(role);
 }
 
 export function isDryRun(): boolean {

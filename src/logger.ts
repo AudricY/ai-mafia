@@ -3,7 +3,7 @@ import * as path from 'path';
 import chalk from 'chalk';
 import { GameLogEntry, LogType, Role } from './types.js';
 import { eventBus } from './events/index.js';
-import { formatPublicTranscriptLine } from './logging/transcript.js';
+import { formatTailTranscriptLine } from './logging/transcript.js';
 
 const ROLE_COLORS: Record<string, (text: string) => string> = {
   mafia: chalk.red,
@@ -216,10 +216,8 @@ export class GameLogger {
     if (!this.persistenceEnabled) return;
     try {
       fs.appendFileSync(this.logFile, `${JSON.stringify(entry)}\n`);
-      const transcriptLine = formatPublicTranscriptLine(entry);
-      if (transcriptLine !== null) {
-        fs.appendFileSync(this.transcriptFile, `${transcriptLine}\n`);
-      }
+      const transcriptLine = formatTailTranscriptLine(entry);
+      fs.appendFileSync(this.transcriptFile, `${transcriptLine}\n`);
     } catch (err) {
       this.persistenceEnabled = false;
       console.error(`[Logger] Write failed, disabling persistence: ${err instanceof Error ? err.message : err}`);

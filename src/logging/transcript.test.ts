@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { GameLogEntry } from '../types.js';
-import { formatPublicTranscriptLine, isPublicTranscriptEntry } from './transcript.js';
+import { formatPublicTranscriptLine, formatTailTranscriptLine, isPublicTranscriptEntry } from './transcript.js';
 
 function makeEntry(overrides: Partial<GameLogEntry> = {}): GameLogEntry {
   return {
@@ -58,4 +58,41 @@ test('formatPublicTranscriptLine still includes legacy public entries without vi
   );
 
   assert.equal(line, '[VOTE][Bob] voted to eliminate Alice');
+});
+
+test('formatTailTranscriptLine includes visibility tag for public chat', () => {
+  const line = formatTailTranscriptLine(
+    makeEntry({
+      type: 'CHAT',
+      player: 'Alice',
+      content: 'Bob: I still think we should vote Carol.',
+    })
+  );
+
+  assert.equal(line, '[PUBLIC][CHAT][Alice] Bob: I still think we should vote Carol.');
+});
+
+test('formatTailTranscriptLine includes private system entries', () => {
+  const line = formatTailTranscriptLine(
+    makeEntry({
+      type: 'SYSTEM',
+      content: 'structured JSON response failed',
+      metadata: { visibility: 'private' },
+    })
+  );
+
+  assert.equal(line, '[PRIVATE][SYSTEM] structured JSON response failed');
+});
+
+test('formatTailTranscriptLine includes faction chat entries', () => {
+  const line = formatTailTranscriptLine(
+    makeEntry({
+      type: 'FACTION_CHAT',
+      player: 'Bob',
+      content: 'Let us kill Alice.',
+      metadata: { visibility: 'faction' },
+    })
+  );
+
+  assert.equal(line, '[FACTION][FACTION_CHAT][Bob] Let us kill Alice.');
 });
