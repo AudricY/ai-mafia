@@ -2,9 +2,9 @@
 
 ## Stack
 
-- Node.js 20+, strict TypeScript, pnpm
+- Node.js 22.13+, strict TypeScript, pnpm
 - Vercel AI SDK (`ai`) and `@ai-sdk/openai`, routed through AI Gateway
-- React 19 and Ink 6 terminal UI
+- React 19 and Ink 7 terminal UI
 - YAML configuration validated with Zod
 - `node:test` and `node:assert/strict`
 

@@ -55,8 +55,8 @@ test('resolveReplayPath finds latest replay across jsonl and json logs', () => {
   const logDir = path.join(process.cwd(), 'logs');
   fs.mkdirSync(logDir, { recursive: true });
 
-  const legacyPath = path.join(logDir, 'game-2026-03-18T10-00-00-000Z.json');
-  const jsonlPath = path.join(logDir, 'game-2026-03-18T10-00-01-000Z.jsonl');
+  const legacyPath = path.join(logDir, 'game-9999-03-18T10-00-00-000Z.json');
+  const jsonlPath = path.join(logDir, 'game-9999-03-18T10-00-01-000Z.jsonl');
 
   try {
     fs.writeFileSync(legacyPath, '[]\n');

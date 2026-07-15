@@ -18,7 +18,7 @@ Designed to demonstrate agentic behavior, role-playing capabilities, and complex
 
 ## Quick Start
 
-1.  **Install dependencies**
+1.  **Install dependencies** (Node.js 22.13+)
     ```bash
     pnpm install
     ```
